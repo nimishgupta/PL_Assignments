@@ -102,6 +102,9 @@ let rec augment_env (ids : id list) (vs : valueList) (env : env) : env =
 (* XXX : Can I use higher order list functions in program *)
 
 
+(* XXX : Why evaluate eagerly in the program, is it a design pattern or a design choice *)
+
+
 
 
 
@@ -137,7 +140,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
     | Lambda (idList, body) -> Closure (idList, body, binds)
 
-    | Apply (lambda, paramList) -> 
+    | Apply (e, paramList) -> 
       (*
         Evaluate e1 using bindings given by eList
         1. Augment a local environment with all the bindings
@@ -145,10 +148,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
         2. Evaluate body in environment)
       *)
 
-      (* XXX : Why do we need to evaluate lambda over here in the current environment
-               Is it just to make sure that we are applying things to a function and not any arbitrary expression and also to decompose it into its constituents*)
-               
-      (match (eval_helper binds lambda) with
+      (match (eval_helper binds e) with
         | Closure (idList, body, func_env) -> 
             (* Helper function that evaluates params of 'lambda' function in original environment *)
             (*
@@ -166,11 +166,6 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
         | _ -> failwith "Expected function")
 
-    (* 
-      XXX : Design choice is to evaluate records at this moment or not
-            But then the return type would change from "(id * exp) list" to "(id * value) list" and then records can no more be passed around for example SetField
-            ** TODO : Changing type implicitly to record value, does recordList is not considered an expression any more ** test **?
-     *)
     | Record (recordList) -> 
       (
         let rec f_eval (recs : (field * exp) list) : (field * value) list = 
@@ -244,15 +239,20 @@ let exp2 : exp = Let ("x", Int 10, Let ("y",
                                         Add (Id ("x"), Id ("y"))
                                        );
                      );;
+
+
+(* FUNCTION TESTS *)
 let exp3 : exp = Lambda (["a"; "b"; "c";],
                          Add (Id ("a"),
                               Add (Id "b", Id "c")));;
 
-
 let exp4 : exp = Apply (exp3, [Int (2); Int (3); Int (5);]);;
 
 
-(* RECORDS *)
+
+
+
+(* RECORDS TESTS *)
 let exp5 : exp = Record ([("x", Int 49);("y", exp2)];);;
 let exp6 : exp = GetField (exp5, "x");;
 let exp7 : exp = GetField (exp5, "y");;
@@ -265,7 +265,6 @@ print_string  (string_of_int (int_of_value (eval exp4)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp6)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp7)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp8)) ^ "\n");
-
 
 
 
@@ -283,5 +282,3 @@ print_string  (string_of_int (int_of_value (eval exp8)) ^ "\n");
 2. let z = Record of multiple values in which one of them is a function of multiple ids in Apply (GetField (Function), paramlist)
 3. Test case with nested records
 *)
-
-
