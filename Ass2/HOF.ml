@@ -1,20 +1,16 @@
-(** Core Language and some desugaring *)
-
+open HOF_syntax
+open List
 
 (*
-  XXX : Why wouldnt a single ';' would do?
-*)
-open HOF_syntax;;
-open List;;
-
 type expList =
   | ExpList of exp * expList
   | EmptyExpList
+*)
 
 
 
 (* 
- XXX : How is idList * exp * env is a closure, environment itself is a
+ XXX : How is id list * exp * env is a closure, environment itself is a
        list of (id * value) then why exp * (list of (id * exp))
 *)
 
@@ -46,9 +42,9 @@ let int_of_value (v : value ) : int =
 ;;
 
 (* how to check for failwith *)
-TEST = int_of_value (Num 5)  = 5;
-TEST = int_of_value (Num 0)  = 0;
-TEST = int_of_value (Num (-5)) = -5;;
+TEST = int_of_value (Num 5)  = 5
+TEST = int_of_value (Num 0)  = 0
+TEST = int_of_value (Num (-5)) = -5
 
 
 
@@ -142,21 +138,14 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
     | Apply (e, paramList) -> 
       (*
-        Evaluate e1 using bindings given by eList
+        Evaluate e using bindings given by paramList
         1. Augment a local environment with all the bindings
-           XXX : Why do we need to evaluate all the paramters while augmenting our environment, because our environment definition requires us to do like that 
-        2. Evaluate body in environment)
+        2. Evaluate body in environment
       *)
 
       (match (eval_helper binds e) with
         | Closure (idList, body, func_env) -> 
             (* Helper function that evaluates params of 'lambda' function in original environment *)
-            (*
-            let rec f (exps : expList) : valueList = 
-              match exps with
-                | ExpList (e, rest) -> ValueList ((eval_helper binds e), f rest)
-                | EmptyExpList -> EmptyValueList
-            *)
             let rec f (exps : exp list) : valueList = 
               if [] <> exps
               then ValueList ((eval_helper binds (hd exps)), f (tl exps))
@@ -249,6 +238,7 @@ let rec desugar (s_exp : S.exp) : exp =
     | S.Lambda (idList, body) -> Lambda (idList, desugar body)
 
     | S.Apply (e, paramList) -> 
+    (* TODO : rewrite in terms of lists functions *)
       let rec f (exps : S.exp list) : exp list =
         if [] <> exps
         then (desugar (hd exps))::(f (tl exps))
@@ -256,6 +246,7 @@ let rec desugar (s_exp : S.exp) : exp =
       in Apply (desugar e, f paramList)
        
     | S.Record (recordList) ->
+    (* TODO : rewrite in terms of lists functions *)
       let rec f (recs : (field * S.exp) list) : (field * exp) list =
         if [] <> recs
         then match (hd recs) with
@@ -281,6 +272,7 @@ let rec desugar (s_exp : S.exp) : exp =
     (*  Assume that the sub-expressions evaluate to integers. *)
     | S.IntEq (e1, e2) -> desugar (S.If0 (S.Sub (e1, e2), S.False, S.True))
 
+    (* TODO *)
     | S.Empty -> failwith "desugaring of S.Empty is not clear"
     | S.Cons (e1, e2) -> failwith "desugaring of S.Cons in not clear"
     
@@ -288,6 +280,8 @@ let rec desugar (s_exp : S.exp) : exp =
     | S.Head (e) -> failwith "desugaring of S.Head is not clear"
     | S.Tail (e) -> failwith "desugaring of S.Tail is not clear"
     | S.IsEmpty (e) -> failwith "desugaring of S.IsEmpty is not clear"
+
+(* XXX : Lists have to implemented using records *)
 
 
 let exp1 : exp = Let ("x", Int 10, Id ("x"));;
