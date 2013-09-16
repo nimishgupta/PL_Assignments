@@ -7,12 +7,6 @@
 open HOF_syntax;;
 open List;;
 
-(*
-type idList = 
-  | IdList of id * idList
-  | EmptyIdList
-*)
-
 type expList =
   | ExpList of exp * expList
   | EmptyExpList
@@ -27,12 +21,14 @@ type expList =
 type value =
   | Num of int
   | Closure of id list * exp * env 
-(*
-  | RecordValue of (field * exp??) list
-*)
+  | RecordValue of (field * value) list
 
 and env =
-  (* XXX : What if I were to define environment as collection of identifiers and corresponding "un-evaluated" expressions, why have we made such a desing choice *)
+  (* 
+    XXX : What if I were to define environment as collection of identifiers
+          and corresponding "un-evaluated" expressions, why have we made
+          such a desing choice
+   *)
   | Env of id * value * env
   | EmptyEnv
 
@@ -53,8 +49,6 @@ let int_of_value (v : value ) : int =
 TEST = int_of_value (Num 5)  = 5;
 TEST = int_of_value (Num 0)  = 0;
 TEST = int_of_value (Num (-5)) = -5;;
-
-
 
 
 
@@ -105,6 +99,8 @@ let rec augment_env (ids : id list) (vs : valueList) (env : env) : env =
      else Env (hd ids, head_of_valueList vs,
                 augment_env (tl ids) (tail_of_valueList vs) env)
 
+(* XXX : Can I use higher order list functions in program *)
+
 
 
 
@@ -122,15 +118,15 @@ let rec eval_helper (binds : env) (e : exp) : value =
     | Mul (e1, e2) -> Num (int_of_value (eval_helper binds e1) *
                            int_of_value (eval_helper binds e2))
 
-    | Let (replaceId, withExp, inExp) -> 
+    | Let (replaceId, with_e, in_e) -> 
       (* 
-        1. evaluate withExp using global environment and augment the current
-            environment locally with replaceId -> withExp
-        2. evaluate inExp with augmented environment
+        1. evaluate with_e using global environment and augment the current
+            environment locally with replaceId -> with_e
+        2. evaluate in_e with augmented environment
        *)
-       let withExpValue = eval_helper binds withExp
-       in let bindsPrime = Env (replaceId, withExpValue, binds)
-          in eval_helper bindsPrime inExp
+       let withExpValue = eval_helper binds with_e
+       in let binds_prime = Env (replaceId, withExpValue, binds)
+          in eval_helper binds_prime in_e
 
     | Id (x) -> lookup binds x
 
@@ -170,21 +166,64 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
         | _ -> failwith "Expected function")
 
-    | Record (recordList) -> failwith "have not implemented yet"
-    (* To implement records, we shall convert them into (id * value) list *)
-        let f (recordList : (field * exp) list) : (field * value) list =
-          if [] <> recordList
-          then match (hd recordList) with
-                | (field, e) -> RecordValue ((field, eval_helper binds e), f tl recordList)
+    (* 
+      XXX : Design choice is to evaluate records at this moment or not
+            But then the return type would change from "(id * exp) list" to "(id * value) list" and then records can no more be passed around for example SetField
+            ** TODO : Changing type implicitly to record value, does recordList is not considered an expression any more ** test **?
+     *)
+    | Record (recordList) -> 
+      (
+        let rec f_eval (recs : (field * exp) list) : (field * value) list = 
+          if [] <> recs
+          then match (hd recs) with
+                | (f, e) -> (f, (eval_helper binds e))::(f_eval (tl recs))
           else []
-        in f recordList
 
-    | SetField (recordList, field, new_e) -> 
+        in RecordValue (f_eval recordList)
+      )
+
+    | SetField (e, searchField, new_e) -> 
     (* lookup field in recordList, if found then evaluate new_e and replace old_e with new_e
     *)
-    | GetField (recordList, searchField) -> 
+      (
+        match (eval_helper binds e) with
+          | RecordValue (recs) ->
+
+            let rec f_replace (rv : (field * value) list) : (field * value) list =
+              if [] = rv then failwith "Field not present in record"
+              else match (hd rv) with
+                    | (f, v) -> if f = searchField
+                                then (f, (eval_helper binds new_e))::(tl rv)
+                                else (hd rv)::f_replace (tl rv)
+
+            in RecordValue (f_replace recs)
+
+          | _ -> failwith "Expected Records"
+      )
+
+
+
+    | GetField (e, searchField) -> 
+
     (* lookup filed in recordList, if found then give the new value*)
-    | _ -> failwith "Not yet implemented"
+      (
+        match (eval_helper binds e) with
+          | RecordValue (recs) ->
+            (* 
+              Search for searchField through the record list, if found return
+              its value else fail with exception 
+            *)
+            let rec f_lookup (rv : (field * value) list) : value =
+              if [] = rv then failwith "Field not present in record"
+              else match (hd rv) with
+                    | (f, v) -> if f = searchField then v else f_lookup (tl rv)
+                    (*| _ -> "Unknown record type"i *)
+
+            in f_lookup recs
+            
+          | _ -> failwith "Expected Records"
+      )
+      
 
 (** Evaluates expressions to values. *)
 let eval (e : HOF_syntax.exp) : value = eval_helper EmptyEnv e
@@ -213,9 +252,21 @@ let exp3 : exp = Lambda (["a"; "b"; "c";],
 let exp4 : exp = Apply (exp3, [Int (2); Int (3); Int (5);]);;
 
 
+(* RECORDS *)
+let exp5 : exp = Record ([("x", Int 49);("y", exp2)];);;
+let exp6 : exp = GetField (exp5, "x");;
+let exp7 : exp = GetField (exp5, "y");;
+let exp8 : exp = GetField (SetField (exp5, "y", exp4), "y");;
+
+
 print_string  (string_of_int (int_of_value (eval (Int 5))) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp2)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp4)) ^ "\n");
+print_string  (string_of_int (int_of_value (eval exp6)) ^ "\n");
+print_string  (string_of_int (int_of_value (eval exp7)) ^ "\n");
+print_string  (string_of_int (int_of_value (eval exp8)) ^ "\n");
+
+
 
 
 
@@ -224,3 +275,13 @@ print_string  (string_of_int (int_of_value (eval exp4)) ^ "\n");
  2. Test eval_helper
  3. Test eval
 *)
+
+
+
+(* Possible test cases
+1. let z = (Record of multiple values) in GetField
+2. let z = Record of multiple values in which one of them is a function of multiple ids in Apply (GetField (Function), paramlist)
+3. Test case with nested records
+*)
+
+
