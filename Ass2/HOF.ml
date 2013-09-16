@@ -126,7 +126,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
         1. evaluate with_e using global environment and augment the current
             environment locally with replaceId -> with_e
         2. evaluate in_e with augmented environment
-       *)
+      *)
        let withExpValue = eval_helper binds with_e
        in let binds_prime = Env (replaceId, withExpValue, binds)
           in eval_helper binds_prime in_e
@@ -271,22 +271,23 @@ let rec desugar (s_exp : S.exp) : exp =
 
     (*  Assume that the conditional evaluates to a boolean. *)
 
-    | If (pred, true_branch, false_branch) ->  failwith "desugaring of predicate is not clear"
+    | S.If (pred, true_branch, false_branch) ->  failwith "desugaring of predicate is not clear"
+
+    (*  Assume that the sub-expressions evalute to booleans.  *)
+    | S.And (e1, e2) -> desugar (S.If (e1, e2, S.False))
+    | S.Or (e1, e2)  -> desugar (S.If (e1, S.True, e2))
 
 
-    | _ -> failwith "thand rakh ladke"
+    (*  Assume that the sub-expressions evaluate to integers. *)
+    | S.IntEq (e1, e2) -> desugar (S.If0 (S.Sub (e1, e2), S.False, S.True))
 
-(*
-| And of exp * exp  (*  Assume that the sub-expressions evalute to booleans.  *)
-| Or of exp * exp (*  Assume that the sub-expressions evalute to booleans.  *)
-| IntEq of exp * exp  (*  Assume that the sub-expressions evaluate to integers. *)
-| Empty
-| Cons of exp * exp
-| Head of exp (*  Assume that the sub-expression is either Cons or Empty. *)
-| Tail of exp (*  Assume that the sub-expression is either Cons or Empty. *)
-| IsEmpty of exp  (*  Assume that the sub-expression is either Cons or Empty. *)
-*)
-
+    | S.Empty -> failwith "desugaring of S.Empty is not clear"
+    | S.Cons (e1, e2) -> failwith "desugaring of S.Cons in not clear"
+    
+    (*  Assume that the sub-expression is either Cons or Empty. *)
+    | S.Head (e) -> failwith "desugaring of S.Head is not clear"
+    | S.Tail (e) -> failwith "desugaring of S.Tail is not clear"
+    | S.IsEmpty (e) -> failwith "desugaring of S.IsEmpty is not clear"
 
 
 let exp1 : exp = Let ("x", Int 10, Id ("x"));;
