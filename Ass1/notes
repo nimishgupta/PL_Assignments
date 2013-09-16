@@ -1,0 +1,50 @@
+- Sequence of declaration followed my main expression (";;" separates the two)
+- declarations are "let" declarations => let <bound identifier> : <its type> = <bound expression>
+     What are bindings?
+       Binding fixes a value or other property of an object (from a set of possible values).
+       Can occur at different types 
+         - Dynamic binding (at execution time)
+         - Static binding (at compile time or language implementation time or language definition time)
+
+- OCaml does not convert between values of different types
+- OCaml has no function or operator overloading
+- function declarationi syntax
+  let <function name> (<param name> [: <param type>, ...]) [ : <result type>] =
+    <body>
+
+- "let" alone is not capable enough to introduce recursive bindings. We use "rec" keyword alongside "let"
+  Ex : let rec factorial (n : int) : int =
+         if 0 = n then 
+           1
+         else
+           n * factorial (n-1)
+
+- Type declarations => type <type name> = <constructor name> <type> [* <type> ... ]
+  type names *must* begin with a lowercase letter and constructor names must begin with an uppercase letter
+
+  Ex : 
+    type point = Point2D of int * int
+
+    let origin : point = Point2D (0, 0)
+    let pt1 : point = Point2D (10, 20)
+    let pt2 : point = Point2D (-40, 50)
+
+  Above, the parenthesis and commas are required: the constructor name must be followed by comma-separated list of arguments enclosed in parenthesis
+
+
+- What is declarative vs imperative programming.
+
+- Pattern Matching
+
+  Pattern matching is the compilers abiility to compare both the form and the content of two expressions
+
+  It is used in two ways
+    1. All or part of a datastructure may be binded to one or more identifiers in a single expression
+    2. A function may have several clauses depending on the form and/or content of its arguments
+
+  Makes functional programming declarative as opposed to imperative
+
+  "_" matches to everything that is not covered
+
+
+  
