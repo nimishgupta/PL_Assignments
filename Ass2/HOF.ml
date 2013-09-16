@@ -281,7 +281,17 @@ let rec desugar (s_exp : S.exp) : exp =
     | S.Tail (e) -> failwith "desugaring of S.Tail is not clear"
     | S.IsEmpty (e) -> failwith "desugaring of S.IsEmpty is not clear"
 
-(* XXX : Lists have to implemented using records *)
+
+(*
+   XXX : Lists have to be implemented using records
+
+   Head (Cons (x, y)) -> x
+   Head (x) -> Undefined
+   Tail (Cons (x, y)) -> y
+   IsEmpty (Cons (x, y)) -> False
+   IsEmpty (Empty) -> True
+*)
+
 
 
 let exp1 : exp = Let ("x", Int 10, Id ("x"));;
