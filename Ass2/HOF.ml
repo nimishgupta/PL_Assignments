@@ -134,9 +134,9 @@ let rec eval_helper (binds : env) (e : exp) : value =
     | Id (x) -> lookup binds x
 
     (* XXX : What if I want to add the false branch as optional *)
-    | If0 (predicate, true_branch, false_branch) -> if 0 <> int_of_value (eval_helper binds predicate)
-                                                    then eval_helper binds true_branch
-                                                    else eval_helper binds false_branch
+    | If0 (pred, true_branch, false_branch) -> if 0 <> int_of_value (eval_helper binds pred)
+                                               then eval_helper binds true_branch
+                                               else eval_helper binds false_branch
 
     | Lambda (idList, body) -> Closure (idList, body, binds)
 
@@ -189,7 +189,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
               else match (hd rv) with
                     | (f, v) -> if f = searchField
                                 then (f, (eval_helper binds new_e))::(tl rv)
-                                else (hd rv)::f_replace (tl rv)
+                                else (hd rv)::(f_replace (tl rv))
 
             in RecordValue (f_replace recs)
 
@@ -230,6 +230,62 @@ let eval (e : HOF_syntax.exp) : value = eval_helper EmptyEnv e
 
   (** Desugars extended HOF to HOF. *)
   (* val desugar : HOF_sugar.exp -> HOF_syntax.exp *)
+
+
+module S = HOF_sugar;;
+
+let rec desugar (s_exp : S.exp) : exp =
+  match s_exp with
+    | S.Int (n) -> Int (n)
+    | S.Add (e1, e2) -> Add (desugar e1, desugar e2)
+    | S.Sub (e1, e2) -> Sub (desugar e1, desugar e2)
+    | S.Mul (e1, e2) -> Mul (desugar e1, desugar e2)
+    | S.Let (x, with_e, in_e) -> Let (x, desugar with_e, desugar in_e)
+    | S.Id (x) -> Id x
+    | S.If0 (pred, true_branch, false_branch) -> If0 (desugar pred,
+                                                      desugar true_branch,
+                                                      desugar false_branch)
+
+    | S.Lambda (idList, body) -> Lambda (idList, desugar body)
+
+    | S.Apply (e, paramList) -> 
+      let rec f (exps : S.exp list) : exp list =
+        if [] <> exps
+        then (desugar (hd exps))::(f (tl exps))
+        else []
+      in Apply (desugar e, f paramList)
+       
+    | S.Record (recordList) ->
+      let rec f (recs : (field * S.exp) list) : (field * exp) list =
+        if [] <> recs
+        then match (hd recs) with
+              | (fld, s_e) -> (fld, desugar s_e)::(f (tl recs))
+        else []
+      in Record (f recordList)
+
+
+    | S.SetField (e1, fld, e2) -> SetField (desugar e1, fld, desugar e2)
+    | S.GetField (e1, fld) -> GetField (desugar e1, fld)
+    | S.True -> Int 1
+    | S.False -> Int 0
+
+    (*  Assume that the conditional evaluates to a boolean. *)
+
+    | If (pred, true_branch, false_branch) ->  failwith "desugaring of predicate is not clear"
+
+
+    | _ -> failwith "thand rakh ladke"
+
+(*
+| And of exp * exp  (*  Assume that the sub-expressions evalute to booleans.  *)
+| Or of exp * exp (*  Assume that the sub-expressions evalute to booleans.  *)
+| IntEq of exp * exp  (*  Assume that the sub-expressions evaluate to integers. *)
+| Empty
+| Cons of exp * exp
+| Head of exp (*  Assume that the sub-expression is either Cons or Empty. *)
+| Tail of exp (*  Assume that the sub-expression is either Cons or Empty. *)
+| IsEmpty of exp  (*  Assume that the sub-expression is either Cons or Empty. *)
+*)
 
 
 
