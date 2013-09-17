@@ -44,6 +44,24 @@ let rec lookup (binds : env) (x : id) : value =
                           else lookup rest x
 
 
+let en0 : env = Env ("z",
+                     Num 7,
+                     Env ("y",
+                          Num 6,
+                          Env ("x",
+                               Num 5,
+                               EmptyEnv
+                              )
+                         )
+                    );;
+
+TEST = int_of_value (lookup en0 "x") = 5
+TEST = int_of_value (lookup en0 "y") = 6
+TEST = int_of_value (lookup en0 "z") = 7
+(*
+TEST = (try (int_of_value (lookup en0 "a")) with _ -> false = false)
+*)
+
 
 
 let rec augment_env (ids : id list) (vs : valueList) (env : env) : env =
