@@ -190,6 +190,134 @@ let rec eval_helper (binds : env) (e : exp) : value =
 let eval (e : HOF_syntax.exp) : value = eval_helper [] e
 
 
+(* Test eval *)
+
+
+let out (e : exp) : int = int_of_value (eval e)
+
+
+(* Int *)
+TEST = out (Int 5)  = 5
+TEST = out (Int (-5)) = (-5)
+TEST = out (Int 0)  = 0
+
+(* Add *)
+TEST = out (Add (Int 5, Int (-5))) = 0
+TEST = out (Add (Add (Int 5, Int (-5)), Add (Int 6, Int (-6)))) = 0
+
+(* Sub *)
+TEST = out (Sub (Int 5, Int 5)) = 0
+TEST = out (Sub (Int 5, Int 4)) = 1
+TEST = out (Sub (Int 4, Int 5)) = (-1)
+TEST = out (Sub (Add (Int 5, Int (-5)), Add (Int 6, Int (-6)))) = 0
+TEST = out (Sub (Sub (Int 5, Int 5), Add (Int 6, Int (-6)))) = 0
+TEST = out (Sub (Sub (Int 5, Int 5), Sub (Int 6, Int 6))) = 0
+
+
+(* Mul *)
+TEST = out (Mul (Int 5, Int 5)) = 5*5
+TEST = out (Mul (Int 5, Int (-1))) = 5 * (-1)
+TEST = out (Mul (Int 0, Int 5)) = 5 * 0
+TEST = out (Mul (Add (Int 3, Int 2), Int 9)) = (2+3) * 9
+TEST = out (Mul (Mul (Int 3, Int 2), Mul (Int 7, Int 2))) = 3*2*7*2
+
+(* Let *)
+TEST = let e : exp = Let ("x", Int 10, Id ("x"))
+       in out e = 10
+
+TEST = let e : exp = Let ("x",
+                          Int 10,
+                          Let ("y",
+                               Add (Int 20, Id ("x")),
+                               Add (Id ("x"), Id ("y"))
+                              )
+                         )
+       in out e = 40
+
+
+(* If0 *)
+TEST = let e : exp = If0 (Int 0, Int 1234, Int 4321)
+       in out e = 1234
+TEST = let e : exp = If0 (Int 10, Int 1234, Int 4321)
+       in out e = 4321
+TEST = let e : exp = If0 (Int (-10), Int 1234, Int 4321)
+       in out e = 4321
+TEST = let e : exp = If0 (Add (Int 2, Int 2), Int 1234, Int 4321)
+       in out e = 4321
+TEST = let e : exp = If0 (Sub (Int 2, Int 2), Int 1234, Int 4321)
+       in out e = 1234
+TEST = let e : exp = If0 (Add (Int 2, Int 2), Add (Int 4, Int 5), Add (Int 5, Int 6))
+       in out e = 5+6
+TEST = let e : exp = If0 (Add (Int 2, Int 2),
+                          If0 (Sub (Int 2, Int 2),
+                               Add (Int 5, Int 6),
+                               Int 9),
+                          Int 10)
+       in out e = 10
+TEST = let e : exp = If0 (Mul (Int 0, Int 2),
+                          If0 (Sub (Int 2, Int 2),
+                               Add (Int 5, Int 6),
+                               Int 9),
+                          Int 10)
+       in out e = 5+6
+
+
+
+(* Functions and Apply *)
+let f_e : exp = Lambda (["a"; "b"; "c";],
+                         Add (Id ("a"),
+                              Add (Id "b", Id "c")));;
+
+
+TEST = let e : exp = Apply (f_e, [Int (2); Int (3); Int (5);])
+       in out e = 5+3+2
+
+TEST = let e : exp = Apply (f_e, [Add (Int 5, Int 8);
+                                  If0 (Int 1, Int 1, Int (-1));
+                                  Int 5;])
+       in out e = (5+8)+(-1)+5
+
+TEST = (try (let e : exp = Apply (Add (Int 1, Int 2), 
+                                  [Int 7; Int 8;])
+             in out e)
+        with _ -> (-1)) = (-1)
+
+
+
+
+(* RECORDS TESTS *)
+let rec_e : exp = Record ([("x", Int 49);("y", f_e)];)
+TEST = let e : exp = GetField (rec_e, "x")
+       in out e = 49
+
+TEST = (match (let e : exp = GetField (rec_e, "y")
+              in eval e) with
+          | Closure (_, _, _) -> true
+          | _ -> false) = true
+
+TEST = (match (let e : exp = GetField (SetField (rec_e, "y", rec_e), "y")
+              in eval e) with
+         | RecordValue (_) -> true
+         | _ -> false) = true
+
+
+TEST = (try (let e : exp = GetField (Int 6, "x")
+             in out e)
+        with _ -> (-1)) = (-1)
+
+TEST = (try (let e : exp = GetField (SetField (Add (Int 7, Int 8),
+                                               "x",
+                                               Add (Int 9, Int 9)), "x")
+             in out e)
+        with _ -> (-1)) = (-1)
+
+
+
+
+
+
+
+
 
 
 
@@ -277,6 +405,8 @@ let rec desugar (s_exp : S.exp) : exp =
 
 
 (*
+   XXX : Semantics of lists
+
    Head (Cons (x, y)) -> x
    Head (x) -> Undefined
    Tail (Cons (x, y)) -> y
@@ -285,12 +415,10 @@ let rec desugar (s_exp : S.exp) : exp =
 *)
 
 
-let print_results (e : exp) : unit =
-  print_string (string_of_int (int_of_value (eval e)) ^ "\n")
 
-let output (e : exp) : int =
-  int_of_value (eval e)
+(* Desugaring Tests *)
 
+(*
 
 TEST = let e : S.exp = S.If (S.True, S.Int 1234, S.Int 4321)
        in output (desugar e) = output (desugar (S.Int 1234))
@@ -312,58 +440,13 @@ let exp0 : S.exp = S.Let ("x", S.IsEmpty (S.Cons (S.Int 39, S.Int 47)), S.If (S.
 in print_results (desugar exp0)
 
 
-let exp1 : exp = Let ("x", Int 10, Id ("x"));;
-let exp2 : exp = Let ("x", Int 10, Let ("y",
-                                        Add (Int 20, Id ("x")),
-                                        Add (Id ("x"), Id ("y"))
-                                       );
-                     );;
-
-
-(* FUNCTION TESTS *)
-let exp3 : exp = Lambda (["a"; "b"; "c";],
-                         Add (Id ("a"),
-                              Add (Id "b", Id "c")));;
-
-let exp4 : exp = Apply (exp3, [Int (2); Int (3); Int (5);]);;
 
 
 
-(* RECORDS TESTS *)
-let exp5 : exp = Record ([("x", Int 49);("y", exp2)];);;
-let exp6 : exp = GetField (exp5, "x");;
-let exp7 : exp = GetField (exp5, "y");;
-let exp8 : exp = GetField (SetField (exp5, "y", exp4), "y");;
-
-
-
-(* Desugaring Tests *)
 let exp9 : S.exp = S.Let ("x", S.Int 10, S.If (S.IntEq (S.Id "x", S.Int 10),
                                                S.Int 99,
                                                S.Int 9));;
 
 
-print_string  (string_of_int (int_of_value (eval (Int 5))) ^ "\n");
-print_string  (string_of_int (int_of_value (eval exp2)) ^ "\n");
-print_string  (string_of_int (int_of_value (eval exp4)) ^ "\n");
-print_string  (string_of_int (int_of_value (eval exp6)) ^ "\n");
-print_string  (string_of_int (int_of_value (eval exp7)) ^ "\n");
-print_string  (string_of_int (int_of_value (eval exp8)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval (desugar exp9))) ^ "\n");
-
-
-
-
-(* TODO : 
- 1. Test lookup
- 2. Test eval_helper
- 3. Test eval
-*)
-
-
-
-(* Possible test cases
-1. let z = (Record of multiple values) in GetField
-2. let z = Record of multiple values in which one of them is a function of multiple ids in Apply (GetField (Function), params)
-3. Test case with nested records
 *)
