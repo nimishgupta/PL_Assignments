@@ -22,10 +22,16 @@ let int_of_value (v : value ) : int =
     | _ -> failwith "int_of_value: Expected Integer"
 
 
-(* how to check for failwith *)
+(* XXX how to check for failwith *)
 TEST = int_of_value (Num 5)  = 5
 TEST = int_of_value (Num 0)  = 0
 TEST = int_of_value (Num (-5)) = -5
+
+(*
+TEST = let v = RecordValue ([("x", Num 5);]) 
+       in try int_of_value (exp0)
+          with _ -> fale = false
+*)
 
 
 
@@ -36,6 +42,7 @@ let rec lookup (binds : env) (x : id) : value =
     | Env (y, v, rest) -> if x = y
                           then v
                           else lookup rest x
+
 
 
 
@@ -75,12 +82,6 @@ let rec augment_env (ids : id list) (vs : valueList) (env : env) : env =
      else if ([] = ids) || (EmptyValueList = vs) then failwith "Parameter mismatch"
      else Env (hd ids, head_of_valueList vs,
                 augment_env (tl ids) (tail_of_valueList vs) env)
-
-(* XXX : Can I use higher order list functions in program *)
-
-
-
-
 
 
 
@@ -187,7 +188,6 @@ let rec eval_helper (binds : env) (e : exp) : value =
           | _ -> failwith "Expected Records"
       )
       
-
 (** Evaluates expressions to values. *)
 let eval (e : HOF_syntax.exp) : value = eval_helper EmptyEnv e
 
@@ -290,15 +290,24 @@ let rec desugar (s_exp : S.exp) : exp =
 let print_results (e : exp) : unit =
   print_string (string_of_int (int_of_value (eval e)) ^ "\n")
 
-let exp0 : S.exp = S.IsEmpty (S.Cons (S.Int 39, S.Int 47))
-in print_results (desugar exp0)
-
-let exp0 : S.exp = S.IsEmpty (S.Empty)
-in print_results (desugar exp0)
+let output (e : exp) : int =
+  int_of_value (eval e)
 
 
-let exp0 : S.exp = S.If (S.True, S.Int 1234, S.Int 4321)
-in print_results (desugar exp0)
+TEST = let e : S.exp = S.If (S.True, S.Int 1234, S.Int 4321)
+       in output (desugar e) = output (desugar (S.Int 1234))
+
+TEST = let e : S.exp = S.If (S.False, S.Int 1234, S.Int 4321)
+       in output (desugar e) = output (desugar (S.Int 4321))
+
+
+TEST = let e : S.exp = S.IsEmpty (S.Cons (S.Int 39, S.Int 47))
+       in output (desugar e) = output (desugar S.False)
+
+TEST = let e : S.exp = S.IsEmpty (S.Empty)
+       in output  (desugar e) = output (desugar S.True)
+
+
 
 
 let exp0 : S.exp = S.Let ("x", S.IsEmpty (S.Cons (S.Int 39, S.Int 47)), S.If (S.Id "x", S.Int 99, S.Int 9))
