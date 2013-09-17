@@ -11,15 +11,19 @@ and env = (id * value) list
 
 let string_of_value (v: value) : string =
   match v with
-    | Num (n) -> string_of_int n
+    | Num (n) -> ("Num " ^ string_of_int n)
     | Closure (ids, exp, env) -> "Closure"
     | RecordValue (_) -> "Record Value"
 
 
+
+let quote (x : string) : string =
+  ("\"" ^ x ^ "\"")
+
 let int_of_value (v : value ) : int =
   match v with 
     | Num (n) -> n
-    | _ -> failwith "int_of_value: Expected Integer"
+    | _ -> failwith ("int_of_value: Expected Integer, instead received " ^ quote (string_of_value v))
 
 (* Tests for int_of_value *)
 TEST = int_of_value (Num 5)  = 5
@@ -37,10 +41,12 @@ TEST = (let v = Closure (["x"; "y";],
 
 
 
+
+
 (* TODO : Implement using higher order list function *)
 let rec lookup (binds : env) (x : id) : value =
   match binds with 
-    | [] -> failwith "lookup: Free identifier"
+    | [] -> failwith ("lookup: Free identifier " ^ (quote x))
     | (y, v)::rest -> if x = y
                       then v
                       else lookup rest x
@@ -397,11 +403,11 @@ let rec desugar (s_exp : S.exp) : exp =
     (*  Assume that the sub-expression is either Cons or Empty. *)
 
     | S.Head (e) -> desugar (S.If ((S.IsEmpty (e)),
-                                   (failwith "desugar: list empty"),
+                                   (S.Apply (S.False, [])),
                                    (S.Apply (e, [(S.Int 1);]))))
 
     | S.Tail (e) -> desugar (S.If ((S.IsEmpty (e)),
-                                   (failwith "desugar: list empty"),
+                                   (S.Apply (S.False, [])),
                                    (S.Apply (e, [(S.Int 2);]))))
 
     | S.IsEmpty (e) -> desugar (S.Apply (e, [(S.Int 0);]))
