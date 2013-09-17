@@ -131,7 +131,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
             in eval_helper (augment_env idList (f params) func_env) body
 
-        | _ -> failwith "Expected function")
+        | _ -> failwith "eval_helper: Expected function")
 
     | Record (recordList) -> 
       (
@@ -152,7 +152,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
           | RecordValue (recs) ->
 
             let rec f_replace (rv : (field * value) list) : (field * value) list =
-              if [] = rv then failwith "Field not present in record"
+              if [] = rv then failwith "eval_helper: Field not present in record"
               else match (hd rv) with
                     | (f, v) -> if f = searchField
                                 then (f, (eval_helper binds new_e))::(tl rv)
@@ -160,7 +160,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
             in RecordValue (f_replace recs)
 
-          | _ -> failwith "Expected Records"
+          | _ -> failwith "eval_helper: Expected Records"
       )
 
 
@@ -176,14 +176,14 @@ let rec eval_helper (binds : env) (e : exp) : value =
               its value else fail with exception 
             *)
             let rec f_lookup (rv : (field * value) list) : value =
-              if [] = rv then failwith "Field not present in record"
+              if [] = rv then failwith "eval_helper: Field not present in record"
               else match (hd rv) with
                     | (f, v) -> if f = searchField then v else f_lookup (tl rv)
                     (*| _ -> "Unknown record type"i *)
 
             in f_lookup recs
             
-          | _ -> failwith "Expected Records"
+          | _ -> failwith "eval_helper: Expected Records"
       )
       
 (** Evaluates expressions to values. *)
@@ -318,10 +318,6 @@ TEST = (try (let e : exp = GetField (SetField (Add (Int 7, Int 8),
 
 
 
-
-
-
-
   (** Desugars extended HOF to HOF. *)
   (* val desugar : HOF_sugar.exp -> HOF_syntax.exp *)
 
@@ -418,35 +414,38 @@ let rec desugar (s_exp : S.exp) : exp =
 
 (* Desugaring Tests *)
 
-(*
+let out (e : S.exp) : int =
+  int_of_value (eval (desugar e))
+  
 
 TEST = let e : S.exp = S.If (S.True, S.Int 1234, S.Int 4321)
-       in output (desugar e) = output (desugar (S.Int 1234))
+       in out e = out (S.Int 1234)
 
 TEST = let e : S.exp = S.If (S.False, S.Int 1234, S.Int 4321)
-       in output (desugar e) = output (desugar (S.Int 4321))
+       in out e = out (S.Int 4321)
 
 
 TEST = let e : S.exp = S.IsEmpty (S.Cons (S.Int 39, S.Int 47))
-       in output (desugar e) = output (desugar S.False)
+       in out e = out S.False
 
 TEST = let e : S.exp = S.IsEmpty (S.Empty)
-       in output  (desugar e) = output (desugar S.True)
+       in out e = out S.True
 
 
+TEST = let e : S.exp = S.Let ("x",
+                              S.IsEmpty (S.Cons (S.Int 39, S.Int 47)),
+                              S.If (S.Id "x", S.Int 99, S.Int 9))
+       in out e = out (S.Int 9)
 
+TEST = let e : S.exp = S.Let ("x",
+                               S.Int 10,
+                               S.If (S.IntEq (S.Id "x", S.Int 10),
+                                     S.Int 99,
+                                     S.Int 9))
+       in out e = out (S.Int 99)
 
-let exp0 : S.exp = S.Let ("x", S.IsEmpty (S.Cons (S.Int 39, S.Int 47)), S.If (S.Id "x", S.Int 99, S.Int 9))
-in print_results (desugar exp0)
-
-
-
-
-
-let exp9 : S.exp = S.Let ("x", S.Int 10, S.If (S.IntEq (S.Id "x", S.Int 10),
-                                               S.Int 99,
-                                               S.Int 9));;
-
-
-print_string  (string_of_int (int_of_value (eval (desugar exp9))) ^ "\n");
-*)
+TEST = try (let e : S.exp = S.Let ("x",
+                              S.Empty,
+                              S.Head (S.Id "x"))
+            in out e = 2)
+       with _ -> (-1) = (-1)
