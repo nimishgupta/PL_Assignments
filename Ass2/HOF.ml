@@ -1,30 +1,12 @@
 open HOF_syntax
 open List
 
-(*
-type expList =
-  | ExpList of exp * expList
-  | EmptyExpList
-*)
-
-
-
-(* 
- XXX : How is id list * exp * env is a closure, environment itself is a
-       list of (id * value) then why exp * (list of (id * exp))
-*)
-
 type value =
   | Num of int
   | Closure of id list * exp * env 
   | RecordValue of (field * value) list
 
 and env =
-  (* 
-    XXX : What if I were to define environment as collection of identifiers
-          and corresponding "un-evaluated" expressions, why have we made
-          such a desing choice
-   *)
   | Env of id * value * env
   | EmptyEnv
 
@@ -37,9 +19,8 @@ and valueList =
 let int_of_value (v : value ) : int =
   match v with 
     | Num (n) -> n
-    | _ -> failwith "Expected Integer"
+    | _ -> failwith "int_of_value: Expected Integer"
 
-;;
 
 (* how to check for failwith *)
 TEST = int_of_value (Num 5)  = 5
@@ -51,7 +32,7 @@ TEST = int_of_value (Num (-5)) = -5
 
 let rec lookup (binds : env) (x : id) : value =
   match binds with 
-    | EmptyEnv -> failwith "Free identifier"
+    | EmptyEnv -> failwith "lookup: Free identifier"
     | Env (y, v, rest) -> if x = y
                           then v
                           else lookup rest x
@@ -98,7 +79,6 @@ let rec augment_env (ids : id list) (vs : valueList) (env : env) : env =
 (* XXX : Can I use higher order list functions in program *)
 
 
-(* XXX : Why evaluate eagerly in the program, is it a design pattern or a design choice *)
 
 
 
@@ -129,8 +109,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
 
     | Id (x) -> lookup binds x
 
-    (* XXX : What if I want to add the false branch as optional *)
-    | If0 (pred, true_branch, false_branch) -> if 0 <> int_of_value (eval_helper binds pred)
+    | If0 (pred, true_branch, false_branch) -> if 0 = int_of_value (eval_helper binds pred)
                                                then eval_helper binds true_branch
                                                else eval_helper binds false_branch
 
@@ -245,6 +224,8 @@ let rec desugar (s_exp : S.exp) : exp =
         else []
       in Apply (desugar e, f paramList)
        
+
+
     | S.Record (recordList) ->
     (* TODO : rewrite in terms of lists functions *)
       let rec f (recs : (field * S.exp) list) : (field * exp) list =
@@ -257,40 +238,59 @@ let rec desugar (s_exp : S.exp) : exp =
 
     | S.SetField (e1, fld, e2) -> SetField (desugar e1, fld, desugar e2)
     | S.GetField (e1, fld) -> GetField (desugar e1, fld)
-    | S.True -> Int 1
-    | S.False -> Int 0
+
+
 
     (*  Assume that the conditional evaluates to a boolean. *)
-
-    | S.If (pred, true_branch, false_branch) ->  failwith "desugaring of predicate is not clear"
-
+    | S.True -> Int 1
+    | S.False -> Int 0
+    | S.If (pred, true_branch, false_branch) -> desugar (S.If0 (S.IntEq (pred, S.True),
+                                                                true_branch,
+                                                                false_branch))
+     
     (*  Assume that the sub-expressions evalute to booleans.  *)
     | S.And (e1, e2) -> desugar (S.If (e1, e2, S.False))
     | S.Or (e1, e2)  -> desugar (S.If (e1, S.True, e2))
 
-
     (*  Assume that the sub-expressions evaluate to integers. *)
-    | S.IntEq (e1, e2) -> desugar (S.If0 (S.Sub (e1, e2), S.False, S.True))
+    | S.IntEq (e1, e2) -> desugar (S.If0 (S.Sub (e1, e2), S.True, S.False))
 
-    (* TODO *)
-    | S.Empty -> failwith "desugaring of S.Empty is not clear"
-    | S.Cons (e1, e2) -> failwith "desugaring of S.Cons in not clear"
+
+
+    (* List Semantics *)
+    | S.Empty -> desugar (S.Lambda (["pick";], S.True))
+    | S.Cons (e1, e2) -> desugar (S.Lambda (["pick";],
+                                            S.If0 (S.Id "pick",
+                                                   S.False,
+                                                   S.If0 (S.IntEq (S.Int 1, S.Id "pick"),
+                                                          e1, e2))))
     
     (*  Assume that the sub-expression is either Cons or Empty. *)
-    | S.Head (e) -> failwith "desugaring of S.Head is not clear"
-    | S.Tail (e) -> failwith "desugaring of S.Tail is not clear"
-    | S.IsEmpty (e) -> failwith "desugaring of S.IsEmpty is not clear"
+
+    (* TEST *)
+    | S.Head (e) -> desugar (S.If ((S.IsEmpty (e)),
+                                   (failwith "list empty"),
+                                   (S.Apply (e, [(S.Int 1);]))))
+
+    | S.Tail (e) -> desugar (S.If ((S.IsEmpty (e)),
+                                   (failwith "list empty"),
+                                   (S.Apply (e, [(S.Int 2);]))))
+
+    | S.IsEmpty (e) -> desugar (S.Apply (e, [(S.Int 0);]))
 
 
 (*
-   XXX : Lists have to be implemented using records
-
    Head (Cons (x, y)) -> x
    Head (x) -> Undefined
    Tail (Cons (x, y)) -> y
    IsEmpty (Cons (x, y)) -> False
    IsEmpty (Empty) -> True
 *)
+
+
+let exp0 : S.exp = S.IsEmpty (S.Cons (S.Int 39, S.Int 47));;
+
+print_string (string_of_int (int_of_value (eval (desugar exp0))) ^ "\n");;
 
 
 
@@ -311,13 +311,18 @@ let exp4 : exp = Apply (exp3, [Int (2); Int (3); Int (5);]);;
 
 
 
-
-
 (* RECORDS TESTS *)
 let exp5 : exp = Record ([("x", Int 49);("y", exp2)];);;
 let exp6 : exp = GetField (exp5, "x");;
 let exp7 : exp = GetField (exp5, "y");;
 let exp8 : exp = GetField (SetField (exp5, "y", exp4), "y");;
+
+
+
+(* Desugaring Tests *)
+let exp9 : S.exp = S.Let ("x", S.Int 10, S.If (S.IntEq (S.Id "x", S.Int 10),
+                                               S.Int 99,
+                                               S.Int 9));;
 
 
 print_string  (string_of_int (int_of_value (eval (Int 5))) ^ "\n");
@@ -326,6 +331,7 @@ print_string  (string_of_int (int_of_value (eval exp4)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp6)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp7)) ^ "\n");
 print_string  (string_of_int (int_of_value (eval exp8)) ^ "\n");
+print_string  (string_of_int (int_of_value (eval (desugar exp9))) ^ "\n");
 
 
 
