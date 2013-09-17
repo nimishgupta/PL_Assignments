@@ -9,23 +9,31 @@ type value =
 and env = (id * value) list
 
 
+let string_of_value (v: value) : string =
+  match v with
+    | Num (n) -> string_of_int n
+    | Closure (ids, exp, env) -> "Closure"
+    | RecordValue (_) -> "Record Value"
+
+
 let int_of_value (v : value ) : int =
   match v with 
     | Num (n) -> n
     | _ -> failwith "int_of_value: Expected Integer"
 
+(* Tests for int_of_value *)
 TEST = int_of_value (Num 5)  = 5
 TEST = int_of_value (Num 0)  = 0
 TEST = int_of_value (Num (-5)) = -5
-TEST = (let v = RecordValue ([("x", Num 5);]) 
-       in try int_of_value (v)
-          with _ -> -1) = -1
+TEST = (try let v = RecordValue ([("x", Num 5);]) 
+            in int_of_value (v)
+        with Failure _ -> (-1)) = (-1)
 TEST = (let v = Closure (["x"; "y";],
                          Add (Id "x", Id "y"),
                          [("x", Num 6);
                           ("y", Num 7);])
         in try int_of_value (v)
-           with _ -> -1) = -1
+           with _ -> (-1)) = (-1)
 
 
 
@@ -40,7 +48,7 @@ let rec lookup (binds : env) (x : id) : value =
 
 let en0 : env = [("z", Num 7);
                  ("y", Num 6);
-                 ("x", Num 5);];;
+                 ("x", Num 5);]
 
 TEST = int_of_value (lookup en0 "x") = 5
 TEST = int_of_value (lookup en0 "y") = 6
@@ -362,7 +370,6 @@ let rec desugar (s_exp : S.exp) : exp =
     | S.GetField (e1, fld) -> GetField (desugar e1, fld)
 
 
-
     (*  Assume that the conditional evaluates to a boolean. *)
     | S.True -> Int 0
     | S.False -> Int 1
@@ -390,11 +397,11 @@ let rec desugar (s_exp : S.exp) : exp =
     (*  Assume that the sub-expression is either Cons or Empty. *)
 
     | S.Head (e) -> desugar (S.If ((S.IsEmpty (e)),
-                                   (failwith "list empty"),
+                                   (failwith "desugar: list empty"),
                                    (S.Apply (e, [(S.Int 1);]))))
 
     | S.Tail (e) -> desugar (S.If ((S.IsEmpty (e)),
-                                   (failwith "list empty"),
+                                   (failwith "desugar: list empty"),
                                    (S.Apply (e, [(S.Int 2);]))))
 
     | S.IsEmpty (e) -> desugar (S.Apply (e, [(S.Int 0);]))
@@ -449,3 +456,24 @@ TEST = try (let e : S.exp = S.Let ("x",
                               S.Head (S.Id "x"))
             in out e = 2)
        with _ -> (-1) = (-1)
+
+
+
+
+let rec repl () = 
+  print_string "> ";
+  match HOF_util.parse (read_line ()) with
+    | HOF_util.Exp exp -> 
+        let v = eval (desugar exp) in
+        print_string (string_of_value v);
+        print_newline ();
+        repl ()
+    | HOF_util.ParseError msg ->
+        print_string msg;
+        print_newline ();
+        repl ()
+
+let _ =  
+  match Array.to_list Sys.argv with
+    | [ exe; "repl" ] -> print_string "Press Ctrl + C to quit.\n"; repl ()
+    | _ -> ()
