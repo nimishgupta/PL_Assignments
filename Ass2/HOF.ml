@@ -267,7 +267,6 @@ let rec desugar (s_exp : S.exp) : exp =
     
     (*  Assume that the sub-expression is either Cons or Empty. *)
 
-    (* TEST *)
     | S.Head (e) -> desugar (S.If ((S.IsEmpty (e)),
                                    (failwith "list empty"),
                                    (S.Apply (e, [(S.Int 1);]))))
@@ -288,10 +287,22 @@ let rec desugar (s_exp : S.exp) : exp =
 *)
 
 
-let exp0 : S.exp = S.IsEmpty (S.Cons (S.Int 39, S.Int 47));;
+let print_results (e : exp) : unit =
+  print_string (string_of_int (int_of_value (eval e)) ^ "\n")
 
-print_string (string_of_int (int_of_value (eval (desugar exp0))) ^ "\n");;
+let exp0 : S.exp = S.IsEmpty (S.Cons (S.Int 39, S.Int 47))
+in print_results (desugar exp0)
 
+let exp0 : S.exp = S.IsEmpty (S.Empty)
+in print_results (desugar exp0)
+
+
+let exp0 : S.exp = S.If (S.True, S.Int 1234, S.Int 4321)
+in print_results (desugar exp0)
+
+
+let exp0 : S.exp = S.Let ("x", S.IsEmpty (S.Cons (S.Int 39, S.Int 47)), S.If (S.Id "x", S.Int 99, S.Int 9))
+in print_results (desugar exp0)
 
 
 let exp1 : exp = Let ("x", Int 10, Id ("x"));;
