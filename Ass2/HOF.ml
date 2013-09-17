@@ -242,8 +242,8 @@ let rec desugar (s_exp : S.exp) : exp =
 
 
     (*  Assume that the conditional evaluates to a boolean. *)
-    | S.True -> Int 1
-    | S.False -> Int 0
+    | S.True -> Int 0
+    | S.False -> Int 1
     | S.If (pred, true_branch, false_branch) -> desugar (S.If0 (S.IntEq (pred, S.True),
                                                                 true_branch,
                                                                 false_branch))
