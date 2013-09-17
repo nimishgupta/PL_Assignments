@@ -6,14 +6,7 @@ type value =
   | Closure of id list * exp * env 
   | RecordValue of (field * value) list
 
-and env =
-  | Env of id * value * env
-  | EmptyEnv
-
-and valueList =
-  | ValueList of value * valueList
-  | EmptyValueList
-
+and env = (id * value) list
 
 
 let int_of_value (v : value ) : int =
@@ -21,85 +14,71 @@ let int_of_value (v : value ) : int =
     | Num (n) -> n
     | _ -> failwith "int_of_value: Expected Integer"
 
-
-(* XXX how to check for failwith *)
 TEST = int_of_value (Num 5)  = 5
 TEST = int_of_value (Num 0)  = 0
 TEST = int_of_value (Num (-5)) = -5
+TEST = (let v = RecordValue ([("x", Num 5);]) 
+       in try int_of_value (v)
+          with _ -> -1) = -1
+TEST = (let v = Closure (["x"; "y";],
+                         Add (Id "x", Id "y"),
+                         [("x", Num 6);
+                          ("y", Num 7);])
+        in try int_of_value (v)
+           with _ -> -1) = -1
 
-(*
-TEST = let v = RecordValue ([("x", Num 5);]) 
-       in try int_of_value (exp0)
-          with _ -> fale = false
-*)
 
 
-
-
+(* TODO : Implement using higher order list function *)
 let rec lookup (binds : env) (x : id) : value =
   match binds with 
-    | EmptyEnv -> failwith "lookup: Free identifier"
-    | Env (y, v, rest) -> if x = y
-                          then v
-                          else lookup rest x
+    | [] -> failwith "lookup: Free identifier"
+    | (y, v)::rest -> if x = y
+                      then v
+                      else lookup rest x
 
 
-let en0 : env = Env ("z",
-                     Num 7,
-                     Env ("y",
-                          Num 6,
-                          Env ("x",
-                               Num 5,
-                               EmptyEnv
-                              )
-                         )
-                    );;
+let en0 : env = [("z", Num 7);
+                 ("y", Num 6);
+                 ("x", Num 5);];;
 
 TEST = int_of_value (lookup en0 "x") = 5
 TEST = int_of_value (lookup en0 "y") = 6
 TEST = int_of_value (lookup en0 "z") = 7
-(*
-TEST = (try (int_of_value (lookup en0 "a")) with _ -> false = false)
-*)
+TEST = (try (int_of_value (lookup en0 "a")) with _ -> -1) = -1
 
 
 
-let rec augment_env (ids : id list) (vs : valueList) (env : env) : env =
+let augment_env (ids  : id list)
+                (vals : value list)
+                (en0 : env) : env =
+  append (combine ids vals) en0
 
-(* 
-  "idList" as "id * idList" not compatible with "id list"
+(* Make sure nothing is clobbered *)
+TEST = int_of_value (lookup (augment_env [] [] en0) "x") = 5
+TEST = int_of_value (lookup (augment_env [] [] en0) "y") = 6
+TEST = int_of_value (lookup (augment_env [] [] en0) "z") = 7
+TEST = (let aug_en = augment_env ["a";] [(Num 8);] en0
+        in int_of_value (lookup aug_en "x")) = 5
+TEST = (let aug_en = augment_env ["a";] [(Num 8);] en0
+        in int_of_value (lookup aug_en "y")) = 6
+TEST = (let aug_en = augment_env ["a";] [(Num 8);] en0
+        in int_of_value (lookup aug_en "z")) = 7
+TEST = (let aug_en = augment_env ["a";] [(Num 8);] en0
+        in int_of_value (lookup aug_en "a")) = 8
 
-  let head_of_idList (ids : idList) : id =
-    match ids with 
-      | IdList (id, rest) -> id
-      | EmptyIdList -> failwith "Head of Empty idList"
+(* Make sure error is flagged on length mismatch *)
+TEST = (try let aug_en = augment_env ["a";] [] en0
+            in int_of_value (lookup aug_en "a")
+        with _ -> -1) = -1
 
-  in
+TEST = (try let aug_en = augment_env [] [Num 8] en0
+            in int_of_value (lookup aug_en "a")
+        with _ -> -1) = -1
 
-  let tail_of_idList (ids : idList) : idList =
-    match ids with
-      | IdList (id, rest) -> rest
-      | EmptyIdList -> failwith "Tail of Empty idList"
-
-  in
-*)
-
-  let head_of_valueList (vs : valueList) : value =
-    match vs with
-      | ValueList (v, rest) -> v
-      | EmptyValueList -> failwith "Head of Empty valueList"
-
-  in                                         
-
-  let tail_of_valueList (vs : valueList) : valueList =
-    match vs with
-      | ValueList (v, rest) -> rest
-      | EmptyValueList -> failwith "Tail of Empty valueList"
-
-  in if ([] = ids) && (EmptyValueList = vs) then EmptyEnv
-     else if ([] = ids) || (EmptyValueList = vs) then failwith "Parameter mismatch"
-     else Env (hd ids, head_of_valueList vs,
-                augment_env (tl ids) (tail_of_valueList vs) env)
+TEST = (try let aug_en = augment_env ["a"; "b"; "c";] [(Num 8); (Num 9); (Num 10); (Num 11);] en0
+            in int_of_value (lookup aug_en "a")
+        with _ -> -1) = -1
 
 
 
@@ -116,14 +95,14 @@ let rec eval_helper (binds : env) (e : exp) : value =
     | Mul (e1, e2) -> Num (int_of_value (eval_helper binds e1) *
                            int_of_value (eval_helper binds e2))
 
-    | Let (replaceId, with_e, in_e) -> 
+    | Let (x, with_e, in_e) -> 
       (* 
-        1. evaluate with_e using global environment and augment the current
-            environment locally with replaceId -> with_e
-        2. evaluate in_e with augmented environment
+        1. Evaluate with_e using global environment
+        2. Augment the current environment "locally" with (x -> with_e)
+        2. Evaluate in_e with augmented environment
       *)
        let withExpValue = eval_helper binds with_e
-       in let binds_prime = Env (replaceId, withExpValue, binds)
+       in let binds_prime =  (x, withExpValue)::binds
           in eval_helper binds_prime in_e
 
     | Id (x) -> lookup binds x
@@ -132,24 +111,25 @@ let rec eval_helper (binds : env) (e : exp) : value =
                                                then eval_helper binds true_branch
                                                else eval_helper binds false_branch
 
-    | Lambda (idList, body) -> Closure (idList, body, binds)
+    | Lambda (ids, body) -> Closure (ids, body, binds)
 
-    | Apply (e, paramList) -> 
+    | Apply (e, params) -> 
       (*
-        Evaluate e using bindings given by paramList
+        Evaluate e using bindings given by params
         1. Augment a local environment with all the bindings
         2. Evaluate body in environment
       *)
 
       (match (eval_helper binds e) with
         | Closure (idList, body, func_env) -> 
-            (* Helper function that evaluates params of 'lambda' function in original environment *)
-            let rec f (exps : exp list) : valueList = 
-              if [] <> exps
-              then ValueList ((eval_helper binds (hd exps)), f (tl exps))
-              else EmptyValueList
 
-            in eval_helper (augment_env idList (f paramList) func_env) body
+            (* Helper function that evaluates params of 'lambda' function in original environment *)
+            let rec f (exps : exp list) : value list = 
+              if [] <> exps
+              then (eval_helper binds (hd exps))::(f (tl exps))
+              else []
+
+            in eval_helper (augment_env idList (f params) func_env) body
 
         | _ -> failwith "Expected function")
 
@@ -207,7 +187,7 @@ let rec eval_helper (binds : env) (e : exp) : value =
       )
       
 (** Evaluates expressions to values. *)
-let eval (e : HOF_syntax.exp) : value = eval_helper EmptyEnv e
+let eval (e : HOF_syntax.exp) : value = eval_helper [] e
 
 
 
@@ -234,13 +214,13 @@ let rec desugar (s_exp : S.exp) : exp =
 
     | S.Lambda (idList, body) -> Lambda (idList, desugar body)
 
-    | S.Apply (e, paramList) -> 
+    | S.Apply (e, params) -> 
     (* TODO : rewrite in terms of lists functions *)
       let rec f (exps : S.exp list) : exp list =
         if [] <> exps
         then (desugar (hd exps))::(f (tl exps))
         else []
-      in Apply (desugar e, f paramList)
+      in Apply (desugar e, f params)
        
 
 
@@ -384,6 +364,6 @@ print_string  (string_of_int (int_of_value (eval (desugar exp9))) ^ "\n");
 
 (* Possible test cases
 1. let z = (Record of multiple values) in GetField
-2. let z = Record of multiple values in which one of them is a function of multiple ids in Apply (GetField (Function), paramlist)
+2. let z = Record of multiple values in which one of them is a function of multiple ids in Apply (GetField (Function), params)
 3. Test case with nested records
 *)
