@@ -9,11 +9,13 @@ type value =
 and env = (id * value) list
 
 
-let string_of_value (v: value) : string =
+let rec string_of_value (v: value) : string =
   match v with
     | Num (n) -> ("Num " ^ string_of_int n)
-    | Closure (ids, exp, env) -> "Closure"
-    | RecordValue (_) -> "Record Value"
+    | Closure (_, _, _) -> "\"Closure\""
+    | RecordValue (l) -> (match l with
+                           | [] -> "[]"
+                           | (f,v1)::t -> ("(" ^ f ^ " -> " ^ string_of_value (v1) ^  ")::" ^ string_of_value (RecordValue (t))))
 
 
 
@@ -465,6 +467,10 @@ TEST = try (let e : S.exp = S.Let ("x",
 
 
 
+let read_eval (str : string) = match HOF_util.parse str with
+  | HOF_util.Exp exp -> eval (desugar exp)
+  | HOF_util.ParseError msg -> failwith ("parse error: " ^ msg)
+
 
 let rec repl () = 
   print_string "> ";
@@ -479,7 +485,21 @@ let rec repl () =
         print_newline ();
         repl ()
 
+
 let _ =  
   match Array.to_list Sys.argv with
     | [ exe; "repl" ] -> print_string "Press Ctrl + C to quit.\n"; repl ()
+    
+    (* parse from file specified on command line *)
+    | [ exe; f] -> (match (HOF_util.parse_from_file f) with
+
+                     | HOF_util.Exp exp ->
+                       let v = eval (desugar exp) in
+                       print_string (string_of_value v);
+                       print_newline ()
+
+                     | HOF_util.ParseError msg -> 
+                        print_string msg;
+                        print_newline ()
+                   )
     | _ -> ()
