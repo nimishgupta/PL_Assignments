@@ -68,18 +68,19 @@ let rec exp_type (e: exp) (tev : tenv) : typ =
                                                                                     (string_of_typ t_param) ^
                                                                                     ", instead received " ^
                                                                                     (string_of_typ t_arg)))
-                                | _ -> (* raise (Type_error ("Expected function, instead received " ^ (string_of_typ t_func)))) *) TNum)
+                                | _ -> raise (Type_error ("Expected function, instead received " ^ (string_of_typ t_func))))
 
-    (* TODO : *)
     (* Fix point function takes the helper as an argument and returns the recursive function *)
     (* x is a function identifier, t_x is the type of that function TFun (t1, t2), e1 is the body containing x *)
     (* it is supposed to give us a function x that can recurse *)
     (* Type of e1 should be t_x and it should be a function TFun (t1, t2) *)
     | Fix (x, t_x, e1) -> (* if x has type t_x and e1 is a function that has type t_x then t_x *)
-                          (* TODO : Should we augment the environment *)
                           let aug_tev = (x, t_x)::tev in
-                          let t_e1 = exp_type e1 aug_tev (* XXX : Should this be the augmented environment? *) in
-                          if t_x = t_e1 then (match t_x with | TFun (_, _) -> t_x | _ -> raise (Type_error ("Fix : Expected a function")))
+                          let t_e1 = exp_type e1 aug_tev in
+                          if t_x = t_e1 then 
+                            (match t_x with
+                               | TFun (_, _) -> t_x 
+                               | _ -> raise (Type_error ("Fix : Expected a function")))
                           else raise (Type_error ("Fix : Mismatch of types"))
 
 
