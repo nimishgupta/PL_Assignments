@@ -30,12 +30,10 @@ let rec exp_type (e: exp) (tev : tenv) : typ =
     | Bool _ -> TBool
 
     (* TODO : Refactor out common code from Arith and Cmp *)
-    (* XXX: Shouldn't we check the type of arithOp *)
     | Arith (_, e1, e2) -> (match exp_type e1 tev, exp_type e2 tev with
                               | TNum, TNum -> TNum
                               | _ -> raise (Type_error "Arithmetic operator expects integers"))
 
-    (* XXX: Shouldn't we check the type of intCmp opertor *)
     | Cmp (_, e1, e2) -> (match exp_type e1 tev, exp_type e2 tev with
                             | (TNum, TNum) -> TBool
                             | _ -> raise (Type_error "Comparison operator expects integers"))
@@ -127,5 +125,240 @@ let rec exp_type (e: exp) (tev : tenv) : typ =
 let type_check (e : exp) : typ = exp_type e []
                            
 end
+
+
+let tc = TypeChecker.type_check
+
+(* Int *)
+TEST = tc (Int (0)) = TNum
+(* Bool *)
+TEST = tc (Bool (true)) = TBool
+
+(* Arith *)
+TEST = tc (Arith (Plus, Int (0), Int (1))) = TNum
+TEST = (try tc (Arith (Plus, Int (0), Bool (false))) = TNum
+        with TypeChecker.Type_error _ -> false) = false
+
+TEST = (try tc (Arith (Plus, Bool (true), Int (0))) = TNum
+        with TypeChecker.Type_error _ -> false) = false
+
+TEST = (try (tc (Arith (Plus, Bool (true), Bool (true)))) = TNum
+        with TypeChecker.Type_error _ -> false) = false
+
+TEST = tc (Arith (Plus, Arith (Plus, Int (0), Int (0)),
+                        Arith (Minus, Int (1), Int (1)))) = TNum
+
+(* Cmp *)
+TEST = tc (Cmp (LT, Int (0), Int (1))) = TBool
+TEST = tc (Cmp (LT, Int (0), Int (1))) = TBool
+TEST = try TBool = tc (Cmp (LT, Int (0), Bool (true)))
+       with TypeChecker.Type_error _ -> false = false
+TEST = try TBool = tc (Cmp (LT, Bool (true), Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+TEST = try TBool = tc (Cmp (LT, Bool (true), Bool (false)))
+       with TypeChecker.Type_error _ -> false = false
+
+
+(* If *)
+TEST = tc (If (Bool (true), Int (0), Int (1))) = tc (Int (0))
+TEST = tc (If (Bool (true), Bool (true), Bool (false))) = tc (Bool (false))
+TEST = try TNum = tc (If (Int (0), Int (0), Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+TEST = try TNum = tc (If (Bool (true), Int (0), Bool (false)))
+       with TypeChecker.Type_error _ -> false = false
+TEST = try TNum = tc (If (Bool (false), Bool (true), Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+
+
+(* Id *)
+
+(* Let *)
+TEST = tc (Let ("x", Int (5), Arith (Plus, Id ("x"), Int (3)))) = TNum
+TEST = try TNum  = tc (Let ("x", Int (5), If (Id ("x"), Int (0), Int (5))))
+       with TypeChecker.Type_error _ -> false = false
+TEST = tc (Let ("x", Int (5), Cmp (LT, Int (9), Int (3)))) = TBool
+
+(* Fun *)
+
+TEST = tc (Fun ("x", TNum, Arith (Plus, Id ("x"), Int (5)))) = TFun (TNum, TNum)
+TEST = try TFun (TNum, TNum)  = tc (Fun ("x", TNum, If (Id ("x"), Int (0), Int (5))))
+       with TypeChecker.Type_error _ -> false = false
+TEST = tc (Fun ("x", TNum, Cmp (LT, Int (9), Int (3)))) = TFun (TNum, TBool)
+
+
+(* App *)
+let f1 = Fun ("x", TNum, Arith (Plus, Id ("x"), Int (5)))
+let f2 = Fun ("x", TNum, Arith (Plus, Int (9), Int (0)))
+let f3 = Fun ("x", TNum, If (Int (0), Int (9), Int (0)))
+TEST = tc (App (f1, Int (0))) = TNum
+(* blow up the match for function param and argument *)
+TEST = try TNum = tc (App (f1, Bool (true)))
+       with TypeChecker.Type_error _ -> false = false
+(* Pass (Not a function) *)
+TEST = try TNum = tc (App (Int (0), Int (5)))
+       with TypeChecker.Type_error _ -> false = false
+(* blow up the function *)
+TEST = try TNum = tc (App (f3, Int (9)))
+       with TypeChecker.Type_error _ -> false = false
+(* blow up the argument *)
+TEST = try TNum = tc (App (f1, If (Int (0), Int (0), Int (0))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+(* Fix *)
+(* Normal case (factorial) *)
+TEST = tc (Fix ("self", TFun (TNum, TNum),
+                Fun ("n", TNum, If (Cmp (EQ, Id "n", Int (0)),
+                                    Int (1),
+                                    Arith (Times,
+                                           Id ("n"),
+                                            App (Id "self",
+                                                 Arith (Minus,
+                                                        Id "n",
+                                                         Int (-1)))))))) = TFun (TNum, TNum)
+
+(* e1 blows up *)
+TEST = try TFun (TNum, TNum) = tc (Fix ("self", TFun (TNum, TNum),
+                                        Fun ("n", TNum,
+                                              Arith (Plus,
+                                                     Bool (true),
+                                                     Int (0)))))
+       with TypeChecker.Type_error _ -> false  = false
+
+(* type of e1 <> t_x *)
+TEST = try TFun (TNum, TNum) = tc (Fix ("self", TFun (TNum, TNum),
+                                        Fun ("n", TBool,
+                                             If (Id "n", Bool (true), App (Id "self", Bool (true))))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+(* t_s is not a function *)
+TEST = try TFun (TNum, TNum) = tc (Fix ("self", TFun (TNum, TNum),
+                                        Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+
+
+
+
+(* Empty *)
+TEST = tc (Empty (TNum)) = TList (TNum)
+TEST = tc (Empty (TBool)) = TList (TBool)
+
+(* Cons *)
+
+(* Same type *)
+TEST = tc (Cons (Int (0), Empty (TNum))) = TList (TNum)
+TEST = tc (Cons (Bool (true), Empty (TBool))) = TList (TBool)
+
+(* Different Type *)
+TEST = try TList (TNum) = tc (Cons (Empty (TNum), Int (3)))
+       with TypeChecker.Type_error _ -> false = false
+
+(* Cons with Cons *)
+TEST = tc (Cons (Int (0), Cons (Int (0), Empty (TNum)))) = TList (TNum)
+
+(* e1 blows up *)
+TEST = try TList (TNum) = tc (Cons (Arith (Plus, Int (0), Bool (true)), Empty (TNum)))
+       with TypeChecker.Type_error _ -> false = false
+
+(* e2 blows up *)
+TEST = try TList (TNum) = tc (Cons (Int (0), Arith (Plus, Int (0), Bool (true))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+
+let l1 = Cons (Int (3), Empty (TNum))
+(* Head *)
+(* List *)
+TEST = tc (Head (l1)) = TNum
+(* Non List *)
+TEST = try TNum = tc (Head (Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+(* Empty *)
+TEST = try TNum = tc (Head (Empty (TNum)))
+       with TypeChecker.Type_error _ -> false = false
+
+(* e blows up *)
+TEST = try TNum = tc (Head (Arith (Plus, Int (0), Bool (false))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+(* Tail *)
+(* List *)
+TEST = tc (Tail (l1)) = TList (TNum)
+(* Non List *)
+TEST = try TList (TNum) = tc (Tail (Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+(* Empty *)
+TEST = try TList (TNum) = tc (Tail (Empty (TNum)))
+       with TypeChecker.Type_error _ -> false = false
+
+(* e blows up *)
+TEST = try TList (TNum) = tc (Tail (Arith (Plus, Int (0), Bool (false))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+
+(* IsEmpty *)
+TEST = tc (IsEmpty (l1)) = TBool
+(* Non List *)
+TEST = try TBool = tc (IsEmpty (Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+(* Empty *)
+TEST = try TBool = tc (IsEmpty (Empty (TNum)))
+       with TypeChecker.Type_error _ -> false = false
+
+(* e blows up *)
+TEST = try TBool = tc (IsEmpty (Arith (Plus, Int (0), Bool (false))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+
+
+(* Pairs *)
+(* e1, e2 same *)
+TEST = tc (Pair (Int (0), Int (1))) = TPair (TNum, TNum)
+(* e1, e2 different *)
+TEST = tc (Pair (Int (0), Bool (false))) = TPair (TNum, TBool)
+(* e1 blows up *)
+TEST = try TPair (TNum, TBool) = tc (Pair (Arith (Plus, Int (0), Bool (true)),
+                                           Bool (false)))
+       with TypeChecker.Type_error _ -> false = false
+
+(* e2 blows up *)
+TEST = try TPair (TNum, TBool) = tc (Pair (Bool (true),
+                                           Arith (Plus, Int (0), Bool (true))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+let p1 = Pair (Int (0), Bool (false))
+
+(* Projection Left *)
+(* pair *)
+TEST = tc (ProjL (p1)) = TNum
+(* not a pair *)
+TEST = try TNum = tc (ProjL (Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+(* expression blows up *)
+TEST = try TNum = tc (ProjL (Pair (Arith (Plus, Int (0), Bool (false)),
+                                   Bool (false))))
+       with TypeChecker.Type_error _ -> false = false
+                                            
+
+
+(* Projection Right *)
+(* pair *)
+TEST = tc (ProjR (p1)) = TBool
+(* not a pair *)
+TEST = try TBool = tc (ProjR (Int (0)))
+       with TypeChecker.Type_error _ -> false = false
+(* expression blows up *)
+TEST = try TBool = tc (ProjR (Pair (Arith (Plus, Int (0), Bool (false)),
+                                   Bool (false))))
+       with TypeChecker.Type_error _ -> false = false
+
+
+
+
 
 module REPL = Typed_eval.Make (TypeChecker)
