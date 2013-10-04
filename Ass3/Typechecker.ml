@@ -29,7 +29,6 @@ let rec exp_type (e: exp) (tev : tenv) : typ =
     | Int _ -> TNum
     | Bool _ -> TBool
 
-    (* TODO : Refactor out common code from Arith and Cmp *)
     | Arith (_, e1, e2) -> (match exp_type e1 tev, exp_type e2 tev with
                               | TNum, TNum -> TNum
                               | _ -> raise (Type_error "Arithmetic operator expects integers"))
@@ -91,7 +90,6 @@ let rec exp_type (e: exp) (tev : tenv) : typ =
                                                   else raise (Type_error ("Expected element of type " ^ (string_of_typ t_lst_elem) ^ " , instead received " ^ (string_of_typ t_hd)))
                           | _ -> raise (Type_error ("Expected " ^ (string_of_typ t_hd) ^ " list, instead received " ^ (string_of_typ t_tl))))
 
-    (* TODO : refactor into "typecheck_list_properties" *)
     | Head (e) -> let t_exp = exp_type e tev in
                   (match t_exp with
                      | TList (t_lst_elem) -> t_lst_elem
@@ -110,7 +108,6 @@ let rec exp_type (e: exp) (tev : tenv) : typ =
 
     | Pair (e1, e2) -> TPair (exp_type e1 tev, exp_type e2 tev)
 
-    (* TODO : Refactor into "typecheck_pair_projections" *)
     | ProjL (e) -> let t_exp = exp_type e tev in
                    (match t_exp with
                       | TPair (t1, t2) -> t1
