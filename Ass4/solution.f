@@ -15,7 +15,7 @@ let triple = typfun A ->
 ;;
 
 
-let Proj1 = typfun A ->
+let triple_proj1 = typfun A ->
               typfun B ->
                 typfun C ->
                   fun (p : [[Triple A B C]]) ->
@@ -27,7 +27,7 @@ let Proj1 = typfun A ->
 ;;
 
 
-let Proj2 = typfun A ->
+let triple_proj2 = typfun A ->
               typfun B ->
                 typfun C ->
                   fun (p : [[Triple A B C]]) ->
@@ -38,7 +38,7 @@ let Proj2 = typfun A ->
 
 ;;
 
-let Proj3 = typfun A ->
+let triple_proj3 = typfun A ->
               typfun B ->
                 typfun C ->
                   fun (p : [[Triple A B C]]) ->
@@ -114,3 +114,52 @@ let xor = fun (e1 : [[Bool]]) ->
 
 ;;
 
+
+type [[Foo A]] = (forall R. (A -> A -> R) -> R -> R)
+
+;;
+
+let bar = typfun A ->
+            fun (x : A) ->
+              fun (y : A) ->
+              typfun R ->
+                fun (left : A -> A -> R) ->
+                  fun (right : R) ->
+                    left x y
+
+;;
+
+let baz = typfun A -> 
+            typfun R ->
+              fun (left : A -> A -> R) ->
+                fun (right : R) ->
+                  right
+
+;;
+
+let Project_bar1 = typfun A ->
+                    fun (b : [[Foo A]]) ->
+                      b <A> (fun (x : A) ->
+                              fun (y : A) ->
+                                x) x
+  
+;;
+                      
+let Project_bar2 = typfun A ->
+                     fun (b : [[Foo A]]) ->
+                       b <A> (fun (x : A) ->
+                                fun (y : A) ->
+                                  y) y
+
+;;
+
+let Discriminate_foo = typfun A ->
+                         typfun R ->
+                           fun (e1 : [[Foo A]]) ->
+                             fun (e2 : R) ->
+                               fun (e3 : R) ->
+                                 e1 <R> (fun (x : A) -> 
+                                           fun (y : A) -> e2)
+                                        e3
+                  
+;; 
