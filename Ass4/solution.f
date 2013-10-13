@@ -1,3 +1,36 @@
+type [[Pair A B]] = (forall C. (A -> B -> C) -> C)
+
+;;
+
+let pair = typfun A ->
+             typfun B ->
+                fun (x : A) ->
+                  fun (y : B) ->
+                    typfun C ->
+                      fun (r : A -> B -> C) ->
+                        r x y
+
+;;
+
+let fst = typfun A ->
+            typfun B ->
+              fun (p : [[Pair A B]]) ->
+                p <A> (fun (x : A) ->
+                         fun (y : B) ->
+                           x)
+
+;;
+
+let snd = typfun A -> 
+               typfun B ->
+                  fun (p : [[Pair A B]]) ->
+                    p <B> (fun (x : A) ->
+                             fun (y : B) ->
+                               y)
+
+;;
+
+
 type [[Triple A B C]] = (forall D. (A -> B -> C -> D) -> D)
 
 ;;
@@ -246,3 +279,56 @@ let reverse = typfun T ->
                   fold_right <T> <[[List T]]> (fun (hd : T) ->
                                                  fun (lstp : [[List T]]) ->
                                                    snoc <T> hd lstp) lst (empty<T>)
+
+;;
+
+
+type [[IntListPair]] = [[Pair [[List int]] [[List int]] ]]
+
+;;
+
+
+let pair_int_list = pair <[[List int]]> <[[List int]]>
+
+;;
+
+let fst_int_list = fst <[[List int]]> <[[List int]]>
+
+;;
+
+let snd_int_list = snd <[[List int]]> <[[List int]]>
+
+;;
+
+
+let insert_sorted_prime = 
+  fun (n : int) ->
+    fun (lst : [[List int]]) ->
+      fold_right <int> <[[IntListPair]]>
+        (fun (m : int) ->
+           fun (p : [[IntListPair]]) ->
+             if<[[IntListPair]]> (n > m) 
+               (pair_int_list
+                  (cons<int> m (fst_int_list p))
+                  (cons<int> m (snd_int_list p)))
+               (pair_int_list
+                  (cons<int> n (cons<int> m (snd_int_list p)))
+                  (cons<int> m (snd_int_list p)))) lst (pair_int_list (cons<int> n (empty<int>)) (empty<int>))
+
+;;
+
+let insert_sorted =
+  fun (n : int) ->
+    fun (lst : [[List int]]) ->
+      fst_int_list (insert_sorted_prime n lst)
+
+;;
+
+let insertion_sort =
+  fun (lst : [[List int]]) ->
+    fold_right <int> <[[List int]]>
+      (fun (e : int) ->
+        fun (lstp : [[List int]]) ->
+          insert_sorted e lstp) lst (empty<int>)
+
+;;
