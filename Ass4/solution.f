@@ -163,3 +163,86 @@ let Discriminate_foo = typfun A ->
                                         e3
                   
 ;; 
+
+
+type [[Option T]] = forall R . (T -> R) -> R -> R
+
+;;
+
+let some = typfun T -> fun (x : T) -> typfun R -> 
+             fun (some : T -> R) -> fun (none : R) -> 
+               some x
+               
+;;
+
+let none = typfun T -> typfun R ->
+             fun (some : T -> R) -> fun (none : R) -> 
+               none
+               
+;;
+
+let option_case  = typfun T -> typfun R ->
+                     fun (v : [[Option T]]) ->
+                       fun (some_case : T -> R) ->
+                         fun (none_case : R) ->
+                           v <R> some_case none_case
+                           
+;;
+
+type [[List T]] = forall R . (T -> R -> R) -> R -> R
+
+;;
+
+let cons = typfun T -> 
+             fun (hd : T) ->
+               fun (tl : [[List T]]) ->
+                 typfun R -> 
+                   fun (c : T -> R -> R) -> 
+                     fun (n : R) ->
+                       c hd (tl <R> c n)
+                   
+;;
+
+
+let empty = typfun T -> 
+              typfun R ->
+                fun (c : T -> R -> R) ->
+                  fun (n : R) ->
+                    n
+
+
+;;
+
+
+let fold_right = typfun T ->
+                   typfun B ->
+                     fun (f : T -> B -> B) -> 
+                       fun (lst : [[List T]]) -> 
+                         fun (acc : B) ->
+                           lst <B> f acc
+
+;;
+
+
+let head = typfun T ->
+            fun (lst : [[List T]]) ->
+              fold_right <T> <[[Option T]]> (fun (hd : T) ->
+                                               fun (hdp : [[Option T]]) ->
+                                                 some<T> hd) lst (none<T>)
+
+;;
+
+let snoc = typfun T ->
+             fun (n : T) ->
+               fun (lst : [[List T]]) ->
+                 fold_right <T> <[[List T]]> (fun (hd : T) ->
+                                                fun (lstp : [[List T]]) ->
+                                                  cons<T> hd lstp) lst (cons<T> n (empty<T>))
+
+;;
+
+let reverse = typfun T ->
+                fun (lst : [[List T]]) ->
+                  fold_right <T> <[[List T]]> (fun (hd : T) ->
+                                                 fun (lstp : [[List T]]) ->
+                                                   snoc <T> hd lstp) lst (empty<T>)
