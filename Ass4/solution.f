@@ -265,6 +265,46 @@ let head = typfun T ->
 
 ;;
 
+type [[OTListTListPair T]] = ([[Pair [[Option [[List T]] ]] [[List T]] ]])
+
+
+;;
+
+
+let pair_ot_t_list = pair <[[Option [[List T]] ]]> <[[List T]]>
+
+;;
+
+let fst_ot_t_list = fst <[[Option [[List T]] ]]> <[[List T]]>
+
+;;
+
+let snd_ot_t_list = snd <[[Option [[List T]] ]]> <[[List T]]>
+
+;;
+
+
+let tail_prime = 
+  typfun T ->
+    fun (lst : [[List T]]) ->
+      fold_right <T> <[[OTListTListPair T]]> 
+        (fun (x : T) ->
+          fun (tp : [[OTListTListPair T]]) ->
+            (pair_ot_t_list
+              ((some <[[List T]]>) (snd_ot_t_list tp))
+              (cons<T> x (snd_ot_t_list tp))))
+         lst (pair_ot_t_list
+                (none<[[List T]]>) 
+                (empty<T>))
+
+;;
+
+let tail = typfun T -> 
+             fun (lst : [[List T]]) ->
+               fst_ot_t_list (tail_prime <T> lst)
+
+;;
+
 let snoc = typfun T ->
              fun (n : T) ->
                fun (lst : [[List T]]) ->
@@ -299,7 +339,6 @@ let fst_int_list = fst <[[List int]]> <[[List int]]>
 let snd_int_list = snd <[[List int]]> <[[List int]]>
 
 ;;
-
 
 let insert_sorted_prime = 
   fun (n : int) ->
