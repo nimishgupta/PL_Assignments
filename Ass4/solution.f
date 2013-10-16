@@ -49,25 +49,25 @@ let triple = typfun A ->
 
 
 let triple_proj1 = typfun A ->
-              typfun B ->
-                typfun C ->
-                  fun (p : [[Triple A B C]]) ->
-                    p <A> (fun (x : A) ->
-                             fun (y : B) -> 
-                               fun (z : C) -> 
-                                 x)
+                     typfun B ->
+                       typfun C ->
+                         fun (p : [[Triple A B C]]) ->
+                           p <A> (fun (x : A) ->
+                                    fun (y : B) -> 
+                                      fun (z : C) -> 
+                                        x)
 
 ;;
 
 
 let triple_proj2 = typfun A ->
-              typfun B ->
-                typfun C ->
-                  fun (p : [[Triple A B C]]) ->
-                    p <B> (fun (x : A) ->
-                             fun (y : B) -> 
-                               fun (z : C) -> 
-                                 y)
+                     typfun B ->
+                       typfun C ->
+                         fun (p : [[Triple A B C]]) ->
+                           p <B> (fun (x : A) ->
+                                    fun (y : B) -> 
+                                      fun (z : C) -> 
+                                        y)
 
 ;;
 
@@ -155,10 +155,10 @@ type [[Foo A]] = (forall R. (A -> A -> R) -> R -> R)
 let bar = typfun A ->
             fun (x : A) ->
               fun (y : A) ->
-              typfun R ->
-                fun (left : A -> A -> R) ->
-                  fun (right : R) ->
-                    left x y
+                typfun R ->
+                  fun (left : A -> A -> R) ->
+                    fun (right : R) ->
+                      left x y
 
 ;;
 
@@ -167,6 +167,17 @@ let baz = typfun A ->
               fun (left : A -> A -> R) ->
                 fun (right : R) ->
                   right
+
+;;
+
+let Discriminate_foo = typfun A ->
+                         typfun R ->
+                           fun (e1 : [[Foo A]]) ->
+                             fun (e2 : R) ->
+                               fun (e3 : R) ->
+                                 e1 <R> (fun (x : A) -> 
+                                           fun (y : A) -> e2)
+                                        e3
 
 ;;
 
@@ -186,18 +197,7 @@ let Project_bar2 = typfun A ->
 
 ;;
 
-let Discriminate_foo = typfun A ->
-                         typfun R ->
-                           fun (e1 : [[Foo A]]) ->
-                             fun (e2 : R) ->
-                               fun (e3 : R) ->
-                                 e1 <R> (fun (x : A) -> 
-                                           fun (y : A) -> e2)
-                                        e3
                   
-;; 
-
-
 type [[Option T]] = forall R . (T -> R) -> R -> R
 
 ;;
@@ -371,3 +371,41 @@ let insertion_sort =
           insert_sorted e lstp) lst (empty<int>)
 
 ;;
+
+
+type [[Tree T]] = forall R. (R -> T -> R -> R) -> R -> R
+
+;;
+
+let mk_tree = fun (left : [[Tree int]]) ->
+                fun (label : int) ->
+                  fun (right : [[Tree int]]) ->
+                    typfun R ->
+                      fun (f : R -> int -> R -> R) ->
+                        fun (z : R) ->
+                          f (left <R> f z) label (right <R> f z)
+
+;;
+
+let empty_tree = typfun R ->
+                   fun (f : R -> int -> R -> R) ->
+                     fun (z : R) ->
+                       z
+
+;;
+
+let reduce_tree = typfun B ->
+                    fun (f : B -> int -> B -> B) ->
+                      fun (tree : [[Tree int]]) ->
+                        fun (acc : B) ->
+                          tree <B> f acc
+
+;;
+
+let find = fun (n : int) ->
+             fun (tree : [[Tree int]]) ->
+               reduce_tree <[[Bool]]> (fun (left_red : [[Bool]]) ->
+                                             fun (label : int) ->
+                                               fun (right_red : [[Bool]]) ->
+                                                 if<[[Bool]]> (n = label)
+                                                   true (or left_red right_red)) tree false
