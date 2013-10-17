@@ -406,6 +406,47 @@ let reduce_tree = typfun B ->
 
 ;;
 
+type [[TreeIntPair]] = [[Pair [[Tree int]] [[Tree int]] ]]
+
+;;
+
+let pair_int_tree = pair <[[Tree int]]> <[[Tree int]]>
+
+;;
+
+let fst_int_tree = fst <[[Tree int]]> <[[Tree int]]>
+
+;;
+
+let snd_int_tree = snd <[[Tree int]]> <[[Tree int]]>
+
+;;
+
+let tree_insert_sorted_prime = 
+  fun (n : int) ->
+    fun (tree : [[Tree int]]) ->
+      reduce_tree <[[TreeIntPair]]> 
+        (fun (left_red : [[TreeIntPair]]) ->
+           fun (label : int) ->
+             fun (right_red : [[TreeIntPair]]) ->
+               if<[[TreeIntPair]]> (or (n < label) (n = label))
+                  (pair_int_tree
+                     (mk_tree (fst_int_tree left_red) label (snd_int_tree right_red))
+                     (mk_tree (snd_int_tree left_red) label (snd_int_tree right_red)))
+                  (pair_int_tree
+                     (mk_tree (snd_int_tree left_red) label (fst_int_tree right_red))
+                     (mk_tree (snd_int_tree left_red) label (snd_int_tree right_red))))
+        tree
+        (pair_int_tree (mk_tree empty_tree n empty_tree) empty_tree)
+        
+;;
+
+let insert = fun (n : int) ->
+               fun (tree : [[Tree int]]) ->
+                 fst_int_tree (tree_insert_sorted_prime n tree)
+               
+;;
+
 let find = fun (n : int) ->
              fun (tree : [[Tree int]]) ->
                reduce_tree <[[Bool]]> (fun (left_red : [[Bool]]) ->
