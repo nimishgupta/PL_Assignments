@@ -181,21 +181,6 @@ let Discriminate_foo = typfun A ->
 
 ;;
 
-let Project_bar1 = typfun A ->
-                    fun (b : [[Foo A]]) ->
-                      b <A> (fun (x : A) ->
-                              fun (y : A) ->
-                                x) x
-  
-;;
-                      
-let Project_bar2 = typfun A ->
-                     fun (b : [[Foo A]]) ->
-                       b <A> (fun (x : A) ->
-                                fun (y : A) ->
-                                  y) y
-
-;;
 
                   
 type [[Option T]] = forall R . (T -> R) -> R -> R
@@ -221,6 +206,25 @@ let option_case  = typfun T -> typfun R ->
                            v <R> some_case none_case
                            
 ;;
+
+
+let Project_bar1 = typfun A ->
+                    fun (f : [[Foo A]]) ->
+                      f<[[Option A]]> (fun (x : A) ->
+                                         fun (y : A) ->
+                                           (some<A> x))
+                                      (none<A>)
+  
+;;
+                      
+let Project_bar2 = typfun A ->
+                     fun (b : [[Foo A]]) ->
+                       b <[[Option A]]> (fun (x : A) ->
+                                           fun (y : A) ->
+                                             (some<A> y)) (none<A>)
+
+;;
+
 
 type [[List T]] = forall R . (T -> R -> R) -> R -> R
 
