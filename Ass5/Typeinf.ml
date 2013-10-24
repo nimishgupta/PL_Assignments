@@ -1,8 +1,8 @@
 (* Step 1. Placeholder Type Identifiers *)
 
 
-module I = Typeinf_syntax.Implicit
-module E = Typeinf_syntax.Explicit
+module I  = Typeinf_syntax.Implicit
+module E  = Typeinf_syntax.Explicit
 module Id = Identifier
 
 
@@ -30,5 +30,81 @@ let rec from_implicit (exp : I.exp) : E.exp =
 
 
 
+(* Step 2. Constraint Generation *)
+
+type constraints = (E.exp * E.typ) list
 
 
+let cs : constraints ref = ref []
+
+
+let add_constraint (e : E.exp) (t : E.typ) : unit =
+  cs := (e, t)::!cs
+
+
+let cgen (env : env) (exp : E.exp) : E.typ =
+  match exp with 
+
+    | E.Int (n) -> add_constraint n E.TInt,
+                   E.TInt
+
+    | E.Bool (b) -> add_constraint b E.TBool,
+                    E.TBool
+
+    | E.Arith (op, e1, e2) -> cgen env e1,
+                              cgen env e2,
+                              add_constraint e1 E.TInt,
+                              add_constraint e2 E.Tint,
+                              E.TInt
+
+    | E.Cmp (op, e1, e2) -> cgen env e1,
+                            cgen env e2,
+                            add_constraint e1 E.Int,
+                            add_constraint e2 E.Int,
+                            E.TBool
+
+    | E.If (ec, et, ef) -> cgen env ec,
+                           cgen env et,
+                           cgen env ef,
+                           (* Constraints :
+                            *   1. type of ec has to be 'bool'
+                            *   2. type of "et" has to be same as that of "ef"
+                            *)
+                           add_constraint ec E.TBool,
+                           let new_t = Id.fresh "t_id" in
+                           add_constraint et new_t,
+                           add_constraint ef new_t,
+                           new_t
+
+    | E.Id (x) -> (* lookup the type in the environment *)
+                  (* XXX : What if there is a free variable? *)
+                  lookup env x
+
+    | E.Let (x, with_e, in_e) ->  (* Constraints :
+                                   * 1. Generate constraints for with_e
+                                   * 1. Assign a new type to with_e
+                                   * 2. Assign the same type to x in the environment
+                                   * 3. add constraints for in_e
+                                   * 4. Assign a new type to in_e 
+                                   *)
+                                   cgen env with_e,
+                                   let new_t = Id.fresh (Id.to_string x) in
+                                   let env' = augment_env x new_t in
+                                   add_constraint with_e new_t,
+                                   add_constraint x      new_t,
+                                   cgen env' in_e,
+                                   let in_e_t = Id.fresh "t_id" in
+                                   add_constraint in_e in_e_t,
+                                   in_e_t
+
+    | E.Fun (x, body) -> E.Fun (x, E.TId (Id.fresh (Id.to_string x)), cgen env body)
+    | E.Fix (x, e) -> E.Fix (x, E.TId (Id.fresh (Id.to_string x)), cgen env e)
+    | E.App (e1, e2) -> E.App (cgen env e1, cgen env e2)
+    | E.Empty -> E.Empty (E.TId (Id.fresh "empty"))
+    | E.Cons (e1, e2) -> E.Cons (cgen env e1, cgen env e2)
+    | E.Head (e) -> E.Head (cgen env e)
+    | E.Tail (e) -> E.Tail (cgen env e)
+    | E.IsEmpty (e) -> E.IsEmpty (cgen env e)
+    | E.Pair (e1, e2) -> E.Pair (cgen env e1, cgen env e2)
+    | E.ProjL (e) -> E.ProjL (cgen env e)
+    | E.ProjR (e) -> E.ProjR (cgen env e)
