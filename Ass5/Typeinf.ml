@@ -149,6 +149,7 @@ module type SUBST = sig
   val singleton : Id.t -> E.typ -> t
   val apply     : t -> E.typ -> E.typ
   val compose   : t -> t -> t
+  val to_list   : t -> (Id.t * E.typ) list
 end
 
 module Subst : SUBST = struct
@@ -238,7 +239,7 @@ module Subst : SUBST = struct
 
     if TypMap.for_all (occurs_check_wrap final_subst) final_subst
     then final_subst
-    else failwith "occurs-check failed"
+    else failwith "occurs check failed"
 
 
   let to_list (s : t) : (Id.t * E.typ) list =
@@ -284,19 +285,19 @@ let rec unify (t_lhs : E.typ) (t_rhs : E.typ) : Subst.t =
 
     (* | E.TInt, E.TInt -> Subst.empty *)
     | _, E.TInt
-    | E.TInt, _  -> failwith "type error"
+    | E.TInt, _  -> failwith "unification failed"
 
     (* | E.TBool, E.TBool -> Subst.empty *)
     | _, E.TBool
-    | E.TBool, _ -> failwith "type error"
+    | E.TBool, _ -> failwith "unification failed"
 
     | E.TFun (t1, t2), E.TFun (t1', t2') -> Subst.compose (unify t1 t1') (unify t2 t2')
     | _, E.TFun _
-    | E.TFun _, _ -> failwith "type error"
+    | E.TFun _, _ -> failwith "unification failed"
 
     | E.TPair (t1, t2), E.TPair (t1', t2') -> Subst.compose (unify t1 t1') (unify t2 t2')
     | _, E.TPair _
-    | E.TPair _, _ -> failwith "type error"
+    | E.TPair _, _ -> failwith "unification failed"
 
     | E.TList (t1), E.TList (t1') -> unify t1 t1'
     (* | _, E.TList _ *)
@@ -496,3 +497,85 @@ let typinf (i_exp : I.exp) : E.exp =
  *
  * Check for transitive closure in unify/compose
  *)
+
+
+
+
+
+
+(* Some examples of operations on substitutions *)
+let x = Id.fresh "x"
+let y = Id.fresh "y"
+TEST (* "Subst.apply should replace x with TInt" *) =
+  let s = Subst.singleton x E.TInt in
+  Subst.apply s (E.TId x) = E.TInt
+
+TEST (* "Subst.apply should recur into type constructors" *) =
+  let s = Subst.singleton x E.TInt in
+  Subst.apply s (E.TFun (E.TId x, E.TBool)) = (E.TFun (E.TInt, E.TBool))
+
+TEST "Subst.compose should distribute over Subst.apply (1)" =
+  let s1 = Subst.singleton x E.TInt in
+  let s2 = Subst.singleton y E.TBool in
+  Subst.apply (Subst.compose s1 s2) (E.TFun (E.TId x, E.TId y)) =
+  Subst.apply s1 (Subst.apply s2 (E.TFun (E.TId x, E.TId y)))
+
+TEST "Subst.compose should distribute over Subst.apply (2)" =
+  let s1 = Subst.singleton x E.TBool in
+  let s2 = Subst.singleton y (E.TId x) in
+  Subst.apply (Subst.compose s1 s2) (E.TFun (E.TId x, E.TId y)) =
+  Subst.apply s1 (Subst.apply s2 (E.TFun (E.TId x, E.TId y)))
+
+
+
+
+(* An incomplete suite of tests for unification *)
+TEST "unifying identical base types should return the empty substitution" =
+  Subst.to_list (unify E.TInt E.TInt) = []
+
+TEST "unifying distinct base types should fail" =
+  try let _ = unify E.TInt E.TBool in false
+  with Failure "unification failed" -> true
+
+TEST "unifying with a variable should produce a singleton substitution" =
+  let x = Id.fresh "myvar" in
+  Subst.to_list (unify E.TInt (E.TId x)) = [(x, E.TInt)]
+
+TEST "unification should recur into type constructors" =
+  let x = Identifier.fresh "myvar" in
+  Subst.to_list (unify (E.TFun (E.TInt, E.TInt)) 
+                       (E.TFun (E.TId x, E.TInt))) = 
+  [(x, E.TInt)]
+
+TEST "unification failures may occur across recursive cases" =
+  try
+    let x = Id.fresh "myvar" in  
+    let _ = unify (E.TFun (E.TInt, E.TId x)) 
+                  (E.TFun (E.TId x, E.TBool)) in
+    false
+  with Failure "unification failed" -> true
+
+TEST "unification should produce a substitution that is transitively closed" =
+  let x = Id.fresh "myvar1" in  
+  let y = Id.fresh "myvar2" in  
+  let z = Id.fresh "myvar3" in  
+  let subst = unify (E.TFun (E.TFun (E.TInt, E.TId x), E.TId y))
+                    (E.TFun (E.TFun (E.TId x, E.TId y), E.TId z)) in
+  Subst.to_list subst = [ (z, E.TInt); (y, E.TInt); (x, E.TInt) ]
+
+TEST "unification should detect constraint violations that require transitive
+      closure" =
+  try
+    let x = Identifier.fresh "myvar1" in  
+    let y = Identifier.fresh "myvar2" in  
+    let _ = unify (E.TFun (E.TFun (E.TInt, E.TId x), E.TId y))
+                      (E.TFun (E.TFun (E.TId x, E.TId y), E.TBool)) in
+    false
+  with Failure "unification failed" -> true
+
+TEST "unification should implement the occurs check (to avoid infinite loops)" =
+  try
+    let x = Identifier.fresh "myvar" in  
+    let _ = unify (E.TFun (E.TInt, E.TId x)) (E.TId x) in
+    false (* a bug is likely to cause an infinite loop *)
+  with Failure "occurs check failed" -> true
