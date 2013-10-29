@@ -240,6 +240,12 @@ module Subst : SUBST = struct
     then final_subst
     else failwith "occurs-check failed"
 
+
+  let to_list (s : t) : (Id.t * E.typ) list =
+    let f (x : Id.t) (v: E.typ) (acc : (Id.t * E.typ) list) : (Id.t * E.typ) list =
+      (x,v)::acc
+    in TypMap.fold f s []
+
 end
 
 
