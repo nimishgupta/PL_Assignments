@@ -224,9 +224,9 @@ module Subst : SUBST = struct
     let f (x : Id.t) (v : E.typ) : bool = not (E.TId (x) = v) in
     let mf (x : Id.t) (v1 : E.typ option) (v2 : E.typ option) : E.typ option =
       (match v1, v2 with
-        | Some v1', Some _ -> Some v1'
-        | Some v1', None -> Some v1'
-        | None, Some v2' -> Some v2'
+        | Some v1', Some v2' ->  add_constraint v1' v2'; v1 
+        | Some _, None -> v1
+        | None, Some _ -> v2
         | _, _ -> failwith "should not have happened") in
 
 
@@ -307,12 +307,29 @@ let rec unify (t_lhs : E.typ) (t_rhs : E.typ) : Subst.t =
 
 (* Step 5. Constraint solving *)
 
+(*
 let solve_constraints () : Subst.t = 
   let f (acc : Subst.t) ((t1,t2) : E.typ * E.typ) : Subst.t =
+    print_string ("Here\n");
+    print_string (Typeinf_util.string_of_typ t1);
+    print_string ("\n");
+    print_string (Typeinf_util.string_of_typ t2);
+    print_string ("\n");
     Subst.compose acc (unify t1 t2) in
   List.fold_left f Subst.empty !cs
+*)
 
 
+let rec _solve_constraints (s : Subst.t) : Subst.t =
+  if [] <> !cs
+  then let (t1, t2) = List.hd !cs in
+       cs := List.tl !cs;
+       _solve_constraints (Subst.compose s (unify t1 t2))
+  else s
+
+let solve_constraints () : Subst.t  =
+  _solve_constraints (Subst.empty)
+  
 
 (* Step 6 : Type annotation *)
 
@@ -506,11 +523,11 @@ let typinf (i_exp : I.exp) : E.exp =
 (* Some examples of operations on substitutions *)
 let x = Id.fresh "x"
 let y = Id.fresh "y"
-TEST (* "Subst.apply should replace x with TInt" *) =
+TEST "Subst.apply should replace x with TInt" =
   let s = Subst.singleton x E.TInt in
   Subst.apply s (E.TId x) = E.TInt
 
-TEST (* "Subst.apply should recur into type constructors" *) =
+TEST "Subst.apply should recur into type constructors" =
   let s = Subst.singleton x E.TInt in
   Subst.apply s (E.TFun (E.TId x, E.TBool)) = (E.TFun (E.TInt, E.TBool))
 
@@ -543,15 +560,17 @@ TEST "unifying with a variable should produce a singleton substitution" =
 
 TEST "unification should recur into type constructors" =
   let x = Identifier.fresh "myvar" in
-  Subst.to_list (unify (E.TFun (E.TInt, E.TInt)) 
-                       (E.TFun (E.TId x, E.TInt))) = 
+  add_constraint (E.TFun (E.TInt, E.TInt)) 
+                 (E.TFun (E.TId x, E.TInt));
+  Subst.to_list (solve_constraints ()) = 
   [(x, E.TInt)]
 
 TEST "unification failures may occur across recursive cases" =
   try
     let x = Id.fresh "myvar" in  
-    let _ = unify (E.TFun (E.TInt, E.TId x)) 
-                  (E.TFun (E.TId x, E.TBool)) in
+    add_constraint (E.TFun (E.TInt, E.TId x)) 
+                   (E.TFun (E.TId x, E.TBool));
+    let _ = solve_constraints () in
     false
   with Failure "unification failed" -> true
 
@@ -559,8 +578,9 @@ TEST "unification should produce a substitution that is transitively closed" =
   let x = Id.fresh "myvar1" in  
   let y = Id.fresh "myvar2" in  
   let z = Id.fresh "myvar3" in  
-  let subst = unify (E.TFun (E.TFun (E.TInt, E.TId x), E.TId y))
-                    (E.TFun (E.TFun (E.TId x, E.TId y), E.TId z)) in
+  add_constraint (E.TFun (E.TFun (E.TInt, E.TId x), E.TId y))
+                 (E.TFun (E.TFun (E.TId x, E.TId y), E.TId z));
+  let subst = solve_constraints ()  in
   Subst.to_list subst = [ (z, E.TInt); (y, E.TInt); (x, E.TInt) ]
 
 TEST "unification should detect constraint violations that require transitive
@@ -568,8 +588,9 @@ TEST "unification should detect constraint violations that require transitive
   try
     let x = Identifier.fresh "myvar1" in  
     let y = Identifier.fresh "myvar2" in  
-    let _ = unify (E.TFun (E.TFun (E.TInt, E.TId x), E.TId y))
-                      (E.TFun (E.TFun (E.TId x, E.TId y), E.TBool)) in
+    add_constraint (E.TFun (E.TFun (E.TInt, E.TId x), E.TId y))
+                   (E.TFun (E.TFun (E.TId x, E.TId y), E.TBool));
+    let _ = solve_constraints ()  in
     false
   with Failure "unification failed" -> true
 
