@@ -41,11 +41,13 @@ let add_constraint (lhs : E.typ) (rhs : E.typ) : unit =
 
 type env = (Id.t * E.typ) list
 
+let empty_env = []
+
 let lookup (env : env) (x : Id.t) : E.typ = 
-  failwith "NYI"
+  List.assoc x env
 
 let augment_env (env : env) (x : Id.t) (t : E.typ) : env =
-  failwith "NYI"
+  (x,t)::env
 
 
 
@@ -91,7 +93,9 @@ let rec cgen (env : env) (exp : E.exp) : E.typ =
     | E.Fun (x, x_t, body) -> let env' = augment_env env x x_t in
                               E.TFun (x_t, cgen env' body)
 
-    | E.Fix (x, x_t, e) -> failwith "NYI"
+    | E.Fix (x, x_t, e) -> (* x_t has to be a function *)
+                           let env' = augment_env env x x_t in
+                           E.TFun (x_t, cgen env' e)
 
     | E.App (e1, e2) -> (* e1 has to have a type of function 
                          * e2 should match the type of the argument expected by function of e1
@@ -163,7 +167,8 @@ module Subst : SUBST = struct
       | E.TBool -> false
 
       | E.TFun (t1, t2) 
-      | E.TPair (t1, t2) -> (occurs_check x t1 s) || (occurs_check x t2 s)
+      | E.TPair (t1, t2) -> (occurs_check x t1 s) ||
+                            (occurs_check x t2 s)
 
       | E.TList (t') -> occurs_check x t' s
 
@@ -206,16 +211,16 @@ module Subst : SUBST = struct
    * compose s1 s2 => s1 o s2
    *  - A new set having the elems : x1 |=> t1 s2, x2 |=> t2 s2, ... xn |=> tn s2
    *  - Delete the following members later : tm s2 = xm, ui/yi such that yi is in {x1, x2 .. xn}
-   *
-   * TODO : Perform an occurs-check later
    *)
 
   let compose (s1 : t) (s2 : t) : t =
-    (* Transform s1 by : for all rhs in s1 apply s2
-     * prune the transform removing identity forms
-     * Add to transform those variables in lhs of s2 that don't occur in lhs of s1 
+    (* 1. Transform s1 by : for all rhs in s1 apply s2
+     * 2. prune the transform removing identity forms
+     * 3. Add to transform those variables in lhs of s2 that don't occur in lhs of s1 
      *)
+    (* Apply 1. *)
     let sf = (TypMap.map (apply s2) s1) in
+    let f (x : Id.t) (v : E.typ) : bool = not (E.TId (x) = v) in
     let mf (x : Id.t) (v1 : E.typ option) (v2 : E.typ option) : E.typ option =
       (match v1, v2 with
         | Some v1', Some _ -> Some v1'
@@ -223,18 +228,17 @@ module Subst : SUBST = struct
         | None, Some v2' -> Some v2'
         | _, _ -> failwith "should not have happened") in
 
-    let f (x : Id.t) (v : E.typ) : bool = 
-      not (E.TId (x) = v) in
 
+    (* Apply 2. & 3. *)
     let final_subst = TypMap.filter f (TypMap.merge mf sf s2) in
 
+    (* occurs-check *)
     let occurs_check_wrap (s : t) (x : Id.t) (v : E.typ) : bool =
       not (occurs_check x v s) in
 
     if TypMap.for_all (occurs_check_wrap final_subst) final_subst
     then final_subst
     else failwith "occurs-check failed"
-
 
 end
 
@@ -293,6 +297,9 @@ let rec unify (t_lhs : E.typ) (t_rhs : E.typ) : Subst.t =
     (* | E.TList _, _ -> failwith "type error" *)
 
 
+
+(* Step 5. Constraint solving *)
+
 let solve_constraints () : Subst.t = 
   let f (acc : Subst.t) ((t1,t2) : E.typ * E.typ) : Subst.t =
     Subst.compose acc (unify t1 t2) in
@@ -300,14 +307,7 @@ let solve_constraints () : Subst.t =
 
 
 
-(* Write occurs check taking substitution into account
- * Write a type checker, adapt from HOF
- * Bring the stages together
- * Write unit tests
- * Write functional tests
- * Give a thought to transitive closure
- *)
-
+(* Step 6 : Type annotation *)
 
 let rec annotate_types (s : Subst.t) (exp : E.exp) : E.exp =
 
@@ -362,3 +362,131 @@ let rec annotate_types (s : Subst.t) (exp : E.exp) : E.exp =
 
     | E.ProjR (e) -> E.ProjR (annotate_types s e)
 
+
+
+
+(* Step 7 : Type Checking (Optional Sanity Check) *)
+let rec tc (env : env) (exp : E.exp) : E.typ =
+  match exp with
+    | E.Int _ -> E.TInt
+    | E.Bool _ -> E.TBool
+
+    | E.Arith (_, e1, e2) -> 
+        (match tc env e1, tc env e2 with
+           | E.TInt, E.TInt -> E.TInt
+           | _ , _ -> failwith "Type checking failed") 
+
+    |E.Cmp (_, e1, e2) -> 
+       (match tc env e1, tc env e2 with
+          | E.TInt, E.TInt -> E.TBool
+          | _ , _ -> failwith "Type checking failed") 
+
+    | E.If (e_cond, e_true, e_false) ->
+        let t_e_cond = tc env e_cond in
+        let t_e_true = tc env e_true in
+        let t_e_false = tc env e_false in
+        if t_e_cond = E.TBool && t_e_true = t_e_false then t_e_true
+        else failwith "Type checking failed"
+
+    | E.Id (x) -> lookup env x
+
+    | E.Let (x, with_e, in_e) -> 
+        let env' = augment_env env x (tc env with_e) in
+        tc env' in_e
+
+
+    | E.Fun (x, t_x, body) -> 
+        let env' = augment_env env x t_x in
+        E.TFun (t_x, tc env' body)
+
+    | E.Fix (x, t_x, e) -> 
+        let env' = augment_env env x t_x in
+        let t_e = tc env' e in
+        if t_e = t_x
+        then 
+        (match t_x with
+          | E.TFun (_,_) -> t_x
+          | _ -> failwith ("Fix : expected a function"))
+        else failwith ("Fix: types mismatch")
+
+    | E.App (e1, e2) ->
+        let t_e1 = tc env e1 in
+        let t_e2 = tc env e2 in
+        (match t_e1 with
+           | E.TFun (t_param, t_body) -> 
+              if t_e2 = t_param 
+              then t_body 
+              else failwith "Function application type mismatch"
+           | _ -> failwith "application type mismatch")
+
+    | E.Empty (t) -> E.TList (t)
+
+    | E.Cons (e1, e2) -> 
+        let t_hd = tc env e1 in
+        let t_rest = tc env e2 in
+        (match t_rest with
+         | E.TList (t) -> 
+             if t_hd = t
+             then t_rest
+             else failwith "Cons : Type mismatch"
+
+         | _ -> failwith "Cons : Not a list")
+
+    | E.Head (e) -> 
+       let t_exp = tc env e in
+       (match t_exp with
+                      | E.TList (t) -> t
+                      | _ -> failwith "Head : Not a list")
+
+
+    | E.Tail (e) -> let t_exp = tc env e in
+                  (match t_exp with
+                     | E.TList (_) -> t_exp
+                     | _ -> failwith "Tail : Not a list")
+
+    | E.IsEmpty (e) -> 
+        let t_exp = tc env e in
+        (match t_exp with
+           | E.TList _ -> E.TBool
+           | _ -> failwith "IsEmpty : Not a list")
+                      
+
+    | E.Pair (e1, e2) -> E.TPair (tc env e1, tc env e2)
+
+    | E.ProjL (e) -> let t_exp = tc env e in
+                   (match t_exp with
+                      | E.TPair (t_left, _) -> t_left
+                      | _-> failwith "ProjL : Not a pair")
+
+   | E.ProjR (e) -> let t_exp = tc env e in
+                  (match t_exp with
+                     | E.TPair (_, t_right) -> t_right
+                     | _ -> failwith "ProjR : Not a pair")
+
+
+(* Step 8 : Finish *)
+
+let typinf (i_exp : I.exp) : E.exp =
+  let e_exp = from_implicit (i_exp) in
+  let _ = cgen empty_env e_exp in (* Generate constraints *)
+  let substs = solve_constraints () in (* Solve constraints using unification *)
+  let e_annot = annotate_types substs e_exp in
+  (*Sanity check *)
+  let _ = tc empty_env e_annot in
+  e_annot
+
+
+
+(* TODO : collect tests *)
+
+(* 
+ * Write basic unit tests that checks for certain properties
+------------------------- 1 ------------------------------------------
+ * Write functional tests
+ *  - Write repl
+ *  - Give a means to execute test files
+ *    o Use parsers and pretty printers to test my code
+------------------------- 1:30 --------------------------------------
+ *
+ * Check for transitive closure in unify/compose
+ *)
