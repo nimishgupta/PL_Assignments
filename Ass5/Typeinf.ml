@@ -153,6 +153,21 @@ module Subst : SUBST = struct
 
   type t = E.typ TypMap.t
 
+
+  let rec occurs_check (x : Id.t) (term : E.typ) (s : t) : bool = 
+    match term with
+      | E.TId (x') -> if x = x' then true
+                      else (try occurs_check x (TypMap.find x' s) s with Not_found -> false)
+
+      | E.TInt
+      | E.TBool -> false
+
+      | E.TFun (t1, t2) 
+      | E.TPair (t1, t2) -> (occurs_check x t1 s) || (occurs_check x t2 s)
+
+      | E.TList (t') -> occurs_check x t' s
+
+
   let singleton (x : Id.t) (t : E.typ) : t =
     TypMap.add x t TypMap.empty
 
@@ -194,6 +209,7 @@ module Subst : SUBST = struct
    *
    * TODO : Perform an occurs-check later
    *)
+
   let compose (s1 : t) (s2 : t) : t =
     (* Transform s1 by : for all rhs in s1 apply s2
      * prune the transform removing identity forms
@@ -210,24 +226,19 @@ module Subst : SUBST = struct
     let f (x : Id.t) (v : E.typ) : bool = 
       not (E.TId (x) = v) in
 
-    TypMap.filter f (TypMap.merge mf sf s2)
+    let final_subst = TypMap.filter f (TypMap.merge mf sf s2) in
+
+    let occurs_check_wrap (s : t) (x : Id.t) (v : E.typ) : bool =
+      not (occurs_check x v s) in
+
+    if TypMap.for_all (occurs_check_wrap final_subst) final_subst
+    then final_subst
+    else failwith "occurs-check failed"
+
 
 end
 
 
-(* TODO : Move into substitution and make occurs-check implicit part of substitution *)
-(* TODO : Rewrite : Taking a map of substitutions into account *)
-let rec occurs_check (x : Id.t) (term : E.typ) : bool = 
-  match term with
-    | E.TId (x') -> x = x'
-
-    | E.TInt
-    | E.TBool -> false
-
-    | E.TFun (t1, t2) 
-    | E.TPair (t1, t2) -> (occurs_check x t1) || (occurs_check x t2)
-
-    | E.TList (t') -> occurs_check x t'
 
 
 (* 
@@ -257,14 +268,9 @@ let rec unify (t_lhs : E.typ) (t_rhs : E.typ) : Subst.t =
                               then Subst.singleton x t_rhs
                               else Subst.singleton y t_lhs
 
-    (* TODO : Unify with empty set, occurs check would then be implicit *)
-    | E.TId (x), _ -> if occurs_check x t_rhs 
-                      then failwith "occurs-check failed"
-                      else Subst.singleton x t_rhs
-
-    | _, E.TId (x) -> if occurs_check x t_lhs 
-                      then failwith "occurs-check failed"
-                      else Subst.singleton x t_lhs
+    (* Empty set is identity for compose. 'compose' provides implicit occurs check *)
+    | E.TId (x), _ -> Subst.compose Subst.empty (Subst.singleton x t_rhs) 
+    | _, E.TId (x) -> Subst.compose Subst.empty (Subst.singleton x t_lhs)
 
     (* | E.TInt, E.TInt -> Subst.empty *)
     | _, E.TInt
