@@ -213,15 +213,6 @@ module Subst : SUBST = struct
 
 
   (* 
-   * - Maintain transitive closures x |=> y, y |=> x is effectively occurs-check with transitivity
-   * - Maintain the property of distributivity over apply
-   *     apply (compose s1 s2) e => apply s1 (apply s2 e)
-   * - Match base types for duplicate variables
-   * - It might as well introduce new substitution variables 
-   *    x |=> TInt, x |=> y gives x |=> TInt & y |=> TInt
-   *)
-
-  (* 
    * Composition algorithm
    * s1 = { x1 |=> t1, x2 |=> t2 .. xn |=> tn }
    * s2 = { y1 |=> u1, y2 |=> u2 .. yn |=> yn }
@@ -246,7 +237,6 @@ module Subst : SUBST = struct
         | None, Some _ -> v2
         | _, _ -> failwith "should not have happened") in
 
-
     (* Apply 2. & 3. *)
     let final_subst = TypMap.filter f (TypMap.merge mf sf s2) in
 
@@ -257,8 +247,6 @@ module Subst : SUBST = struct
     if TypMap.for_all occurs_check_wrap final_subst
     then final_subst
     else failwith "occurs check failed"
-
-
 
 end
 
@@ -506,7 +494,7 @@ let rec tc (env : env) (exp : E.exp) : E.typ =
 let typinf (i_exp : I.exp) : E.exp =
   let e_exp = from_implicit (i_exp) in
   let _ = cgen empty_env e_exp in (* Generate constraints *)
-  print_constraints ();
+  (* print_constraints (); *)
   let substs = solve_constraints () in (* Solve constraints using unification *)
   let e_annot = annotate_types substs e_exp in
   (*Sanity check *)
