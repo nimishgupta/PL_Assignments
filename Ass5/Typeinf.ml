@@ -102,7 +102,9 @@ let rec cgen (env : env) (exp : E.exp) : E.typ =
 
     | E.Fix (x, x_t, e) -> (* x_t has to be a function *)
                            let env' = augment_env env x x_t in
-                           E.TFun (x_t, cgen env' e)
+                           let t_e = cgen env' e in
+                           add_constraint x_t t_e;
+                           t_e
 
     | E.App (e1, e2) -> (* e1 has to have a type of function 
                          * e2 should match the type of the argument expected by function of e1
@@ -293,7 +295,7 @@ let rec unify (t_lhs : E.typ) (t_rhs : E.typ) : Subst.t =
 
     (* | E.TInt, E.TInt -> Subst.empty *)
     | _, E.TInt
-    | E.TInt, _  -> failwith "unification failed"
+    | E.TInt, _ -> failwith "unification failed"
 
     (* | E.TBool, E.TBool -> Subst.empty *)
     | _, E.TBool
@@ -508,16 +510,6 @@ let typinf (i_exp : I.exp) : E.exp =
   let _ = tc empty_env e_annot in
   e_annot
 
-
-
-(* TODO : collect tests *)
-
-(* 
- * Write functional tests
- *  - Write repl
- *  - Give a means to execute test files
- *    o Use parsers and pretty printers to test my code
- *)
 
 
 let rec repl () = 
