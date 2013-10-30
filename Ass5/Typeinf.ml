@@ -39,6 +39,13 @@ let cs : constraints ref = ref []
 let add_constraint (lhs : E.typ) (rhs : E.typ) : unit =
   cs := (lhs, rhs)::!cs
 
+
+let print_constraints () : unit =
+  let open Typeinf_util in
+  let f ((t1,t2) : E.typ * E.typ) : unit =
+    print_string ((string_of_typ t1) ^ " : " ^ (string_of_typ t2) ^ "\n") in
+  List.iter f !cs  
+
 type env = (Id.t * E.typ) list
 
 let empty_env = []
@@ -78,8 +85,8 @@ let rec cgen (env : env) (exp : E.exp) : E.typ =
                            E.TId new_t
 
     | E.Id (x) -> (* lookup the type in the environment *)
-                  (* XXX : What if there is a free variable? *)
-                  lookup env x
+       (try lookup env x 
+        with Not_found -> failwith ("Unbound identifier : " ^ (Id.to_string x)))
 
     | E.Let (x, with_e, in_e) ->  (* Constraints :
                                    * 1. Generate constraints for with_e
@@ -102,39 +109,39 @@ let rec cgen (env : env) (exp : E.exp) : E.typ =
                          * type of the App should be the type of e1 body *)
                         let arg_t  = E.TId (Id.fresh "arg_t") in
                         let body_t = E.TId (Id.fresh "body_t") in
-                        add_constraint (E.TFun (arg_t, body_t)) (cgen env e1);
+                        add_constraint (cgen env e1) (E.TFun (arg_t, body_t)) ;
                         add_constraint arg_t (cgen env e2);
                         body_t
 
     | E.Empty (t) -> E.TList t
 
     | E.Cons (e1, e2) -> let t = E.TId (Id.fresh "t") in
-                         add_constraint (E.TList t) (cgen env e2);
+                         add_constraint (cgen env e2) (E.TList t) ;
                          add_constraint t (cgen env e1);
                          E.TList t
 
     | E.Head (e) -> let t = E.TId (Id.fresh "t") in
-                    add_constraint (E.TList t) (cgen env e);
+                    add_constraint (cgen env e) (E.TList t);
                     t
 
     | E.Tail (e) -> let t = E.TId (Id.fresh "t") in
-                    add_constraint (E.TList t) (cgen env e);
+                    add_constraint (cgen env e) (E.TList t);
                     E.TList t
 
     | E.IsEmpty (e) -> let t = E.TId (Id.fresh "t") in
-                       add_constraint (E.TList t) (cgen env e);
+                       add_constraint (cgen env e) (E.TList t);
                        E.TBool
 
     | E.Pair (e1, e2) -> E.TPair (cgen env e1, cgen env e2)
 
     | E.ProjL (e) -> let tpl = E.TId (Id.fresh "tpl") in
                      let tpr = E.TId (Id.fresh "tpr") in
-                     add_constraint (E.TPair (tpl, tpr)) (cgen env e);
+                     add_constraint (cgen env e) (E.TPair (tpl, tpr));
                      tpl
 
     | E.ProjR (e) -> let tpl = E.TId (Id.fresh "tpl") in
                      let tpr = E.TId (Id.fresh "tpr") in
-                     add_constraint (E.TPair (tpl, tpr)) (cgen env e);
+                     add_constraint (cgen env e) (E.TPair (tpl, tpr));
                      tpr
 
 
@@ -159,6 +166,7 @@ module Subst : SUBST = struct
   type t = E.typ TypMap.t
 
 
+  (* XXX : should it check for transitive substitutions?, may violate basic property of substitution *)
   let rec occurs_check (x : Id.t) (term : E.typ) (s : t) : bool = 
     match term with
       | E.TId (x') -> if x = x' then true
@@ -493,6 +501,7 @@ let rec tc (env : env) (exp : E.exp) : E.typ =
 let typinf (i_exp : I.exp) : E.exp =
   let e_exp = from_implicit (i_exp) in
   let _ = cgen empty_env e_exp in (* Generate constraints *)
+  print_constraints ();
   let substs = solve_constraints () in (* Solve constraints using unification *)
   let e_annot = annotate_types substs e_exp in
   (*Sanity check *)
@@ -504,16 +513,45 @@ let typinf (i_exp : I.exp) : E.exp =
 (* TODO : collect tests *)
 
 (* 
- * Write basic unit tests that checks for certain properties
-------------------------- 1 ------------------------------------------
  * Write functional tests
  *  - Write repl
  *  - Give a means to execute test files
  *    o Use parsers and pretty printers to test my code
-------------------------- 1:30 --------------------------------------
- *
- * Check for transitive closure in unify/compose
  *)
+
+
+let rec repl () = 
+  print_string "> ";
+  match Typeinf_util.parse (read_line ()) with
+    | Typeinf_util.Exp exp -> 
+        let e = typinf exp in
+        print_string (Typeinf_util.string_of_exp e);
+        print_newline ();
+        repl ()
+    | Typeinf_util.ParseError msg ->
+        print_string msg;
+        print_newline ();
+        repl ()
+
+
+let _ =  
+  match Array.to_list Sys.argv with
+    | [ exe; "repl" ] -> print_string "Press Ctrl + C to quit.\n"; repl ()
+    
+    (* parse from file specified on command line *)
+    | [ exe; f] -> (match (Typeinf_util.parse_from_file f) with
+
+                     | Typeinf_util.Exp exp ->
+                       let e = typinf exp in
+                       print_string (Typeinf_util.string_of_exp e);
+                       print_newline ()
+
+                     | Typeinf_util.ParseError msg -> 
+                        print_string msg;
+                        print_newline ()
+                   )
+    | _ -> ()
+
 
 
 
