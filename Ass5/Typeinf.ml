@@ -40,11 +40,16 @@ let add_constraint (lhs : E.typ) (rhs : E.typ) : unit =
   cs := (lhs, rhs)::!cs
 
 
-let print_constraints () : unit =
+let print_list (lst : (E.typ * E.typ) list) : unit =
   let open Typeinf_util in
   let f ((t1,t2) : E.typ * E.typ) : unit =
     print_string ((string_of_typ t1) ^ " : " ^ (string_of_typ t2) ^ "\n") in
-  List.iter f !cs  
+  List.iter f lst
+
+  
+
+let print_constraints () : unit =
+  print_list !cs
 
 type env = (Id.t * E.typ) list
 
@@ -168,20 +173,24 @@ module Subst : SUBST = struct
   type t = E.typ TypMap.t
 
 
-  (* XXX : should it check for transitive substitutions?, may violate basic property of substitution *)
-  let rec occurs_check (x : Id.t) (term : E.typ) (s : t) : bool = 
+  let to_list (s : t) : (Id.t * E.typ) list =
+    let f (x : Id.t) (v: E.typ) (acc : (Id.t * E.typ) list) : (Id.t * E.typ) list =
+      (x,v)::acc
+    in TypMap.fold f s []
+
+
+  let rec occurs_check (x : Id.t) (term : E.typ) : bool = 
     match term with
-      | E.TId (x') -> if x = x' then true
-                      else (try occurs_check x (TypMap.find x' s) s with Not_found -> false)
+      | E.TId (x') -> x = x'
 
       | E.TInt
       | E.TBool -> false
 
       | E.TFun (t1, t2) 
-      | E.TPair (t1, t2) -> (occurs_check x t1 s) ||
-                            (occurs_check x t2 s)
+      | E.TPair (t1, t2) -> (occurs_check x t1) ||
+                            (occurs_check x t2)
 
-      | E.TList (t') -> occurs_check x t' s
+      | E.TList (t') -> occurs_check x t'
 
 
   let singleton (x : Id.t) (t : E.typ) : t =
@@ -204,8 +213,6 @@ module Subst : SUBST = struct
 
 
   (* 
-   * TODO : 
-   *
    * - Maintain transitive closures x |=> y, y |=> x is effectively occurs-check with transitivity
    * - Maintain the property of distributivity over apply
    *     apply (compose s1 s2) e => apply s1 (apply s2 e)
@@ -244,18 +251,14 @@ module Subst : SUBST = struct
     let final_subst = TypMap.filter f (TypMap.merge mf sf s2) in
 
     (* occurs-check *)
-    let occurs_check_wrap (s : t) (x : Id.t) (v : E.typ) : bool =
-      not (occurs_check x v s) in
+    let occurs_check_wrap (x : Id.t) (v : E.typ) : bool =
+      not (occurs_check x v) in
 
-    if TypMap.for_all (occurs_check_wrap final_subst) final_subst
+    if TypMap.for_all occurs_check_wrap final_subst
     then final_subst
     else failwith "occurs check failed"
 
 
-  let to_list (s : t) : (Id.t * E.typ) list =
-    let f (x : Id.t) (v: E.typ) (acc : (Id.t * E.typ) list) : (Id.t * E.typ) list =
-      (x,v)::acc
-    in TypMap.fold f s []
 
 end
 
