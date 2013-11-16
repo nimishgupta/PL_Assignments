@@ -6,19 +6,26 @@ module Env : sig
   type env
   val empty : env
   (* XXX : Why don't we have values like previous assignments, lazy ?? *)
-  val lookup : id -> env -> exp * env
-  val bind : id -> exp * env -> env -> env
+  (* val lookup : id -> env -> exp * env *)
+  val lookup : id -> env -> exp
+
+  (* val bind : id -> exp * env -> env -> env *)
+  val bind : id -> exp -> env -> env
+
 end = struct
   module IdMap = Identifier.Map
 
   type env = Env of value IdMap.t
-  and value = exp * env
+  and value = exp (* * env *)
 
   let empty = Env IdMap.empty
 
   let lookup x (Env env) = IdMap.find x env
 
-  let bind x (v,e) (Env env) = Env (IdMap.add x (v,e) env)
+  (* let bind x (v,e) (Env env) = Env (IdMap.add x (v,e) env) *)
+  let bind x v (Env env) = Env (IdMap.add x v env)
+
+end
 
 
 type context =  
@@ -26,7 +33,7 @@ type context =
   | BinOpR of binOp * exp * context
   | BinOpL of binOp * int * context
   | IfC of exp * exp * context
-  | LetV of id * env * exp * context
+  | LetV of id * exp * env * context
   | RestoreEnv of env * context
 (*  | AppR   of exp * context *)
 (*  | AppL   of id * exp * env * context *)
@@ -67,8 +74,11 @@ let step (e : exp) (cont : context) (env : env) : exp * context * env = match (e
   | Bool b, IfC (eT, eF, cont) -> if b then eT, cont else eF, cont
 
   | Id x, cont -> 
-      (* Make sure to restore old environment after extracting x from it *)
-      let (v, env') = lookup x env in v, cont, env'
+      (* (* Make sure to restore old environment after extracting x from it *)
+      let (v, env') = lookup x env in v, cont, env' *)
+
+      (* We now have an explicit continuation to restore the environment whenever required *)
+      let v = lookup x env in v, cont, env
 
 
   (* Invariant for Let bindings : We want to restore the environment after evaluating
@@ -83,8 +93,12 @@ let step (e : exp) (cont : context) (env : env) : exp * context * env = match (e
    *     Let x = 1 in
    *       x + y
    *)
-  | Let (x, with_e, in_e), cont -> with_e, LetV (x, env, in_e, cont), env
-  | v, LetV (x, env', in_e, cont) when is_value v -> in_e, cont, (bind x, (v, env) env')
+
+  (* Should I store the environment at the time of let exp *)
+  | Let (x, with_e, in_e), cont -> with_e, LetV (x, in_e, env, cont), env
+  | v, LetV (x, in_e, env', cont) when is_value v -> 
+      in_e, RestoreEnv (env', cont), bind x v env
+  | v, RestoreEnv (env', context) when is_value v -> v, context, env'
       
 
   | _ -> failwith "Unexpected control string"
