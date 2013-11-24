@@ -208,25 +208,29 @@ let step (e : exp)
 
   (* List processing *)
 
-  (* TODO : Type Checking? *)
-
   (* Can the code of list be made more concise *)
   | Head e, cont -> e, HeadCont (cont), env
   | v, HeadCont (cont) when is_value v -> (match v with
       | Empty _ -> failwith "Head of empty list requested"
-      | Cons (atm, lst) -> atm, cont, env (* XXX : Subject to condition that type of atm is similar to element of type of list *)
-      | _ -> failwith "Expected list")
+      | Cons (atm, lst) -> (match type_of atm, type_of lst with 
+          | t1, TList t2 when t1 = t2 -> atm, cont, env
+          | _ -> failwith "Type Error : Cons type mismatch")
+      | _ -> failwith "Type Error : Expected list")
 
   | Tail e, cont -> e, TailCont (cont), env
   | v, TailCont (cont) when is_value v -> (match v with
       | Empty _ -> failwith "Tail of empty list requested"
-      | Cons (atm, lst) -> lst, cont, env  (* XXX : Subject to condition that type of atm is similar to element of type of list *)
-      | _ -> failwith "Expected list")
+      | Cons (atm, lst) -> (match type_of atm, type_of lst with
+          | t1, TList t2 when t1 = t2 -> lst, cont, env
+          | _ -> failwith "Type Error : Cons type mismatch")
+      | _ -> failwith "Type Error : Expected list")
 
   | IsEmpty e, cont -> e, IsEmptyCont (cont), env
   | v, IsEmptyCont (cont) when is_value v -> (match v with
      | Empty _ -> Bool true, cont, env
-     | Cons _ -> Bool false, cont, env (* XXX : Should we check if types match *)
+     | Cons atm, lst -> (match type_of atm, type_of lst with
+         | t1, TList t2 when t1 = t2 -> Bool false, cont, env
+         | _ -> failwith "Type Error : Cons Type mismatch")
      | _ -> failwith "Expected list")
 
   (* XXX : Write Test : Is is_value guard necessary, may cause a infinite recursion when not done *)
