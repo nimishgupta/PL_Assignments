@@ -1,33 +1,126 @@
 open M_syntax
 
 
-module Env : sig
+(* TODO : Make a functor on exp and typ *)
+module ExpEnv : 
+
+sig
   
   type env
-  val empty : env
-  (* XXX : Why don't we have values like previous assignments, lazy ?? *)
-  (* val lookup : id -> env -> exp * env *)
-  val lookup : id -> env -> exp
 
-  (* val bind : id -> exp * env -> env -> env *)
-  val bind : id -> exp -> env -> env
+  val empty : env
+
+  val lookup : id -> env -> value
+
+  val bind : id -> value -> env -> env
 
 end = struct
+
   module IdMap = Identifier.Map
 
-  type env = Env of value IdMap.t
-  and value = exp (* * env *)
+  type env = ExpEnv of value IdMap.t
+  and value = exp (* TODO : Parameterize *) 
 
-  let empty = Env IdMap.empty
+  let empty = ExpEnv IdMap.empty
 
-  let lookup x (Env env) = IdMap.find x env
+  let lookup x (ExpEnv env) = IdMap.find x env
 
-  (* let bind x (v,e) (Env env) = Env (IdMap.add x (v,e) env) *)
-  let bind x v (Env env) = Env (IdMap.add x v env)
+  let bind x v (ExpEnv env) = ExpEnv (IdMap.add x v env)
 
 end
 
 
+(* TODO : Parameterized module *)
+module TypEnv : 
+
+sig
+  
+  type env
+
+  val empty : env
+
+  val lookup : id -> env -> value
+
+  val bind : id -> value -> env -> env
+
+end = struct
+
+  module IdMap = Identifier.Map
+
+  type env = TypEnv of value IdMap.t
+  and value = typ (* TODO : Parameterize *) 
+
+  let empty = TypEnv IdMap.empty
+
+  let lookup x (TypEnv env) = IdMap.find x env
+
+  let bind x v (TypEnv env) = TypEnv (IdMap.add x v env)
+
+end
+
+
+
+let rec type_of (env : TypEnv.env) (e : exp) : typ = match e with
+  | Int _ -> TInt
+  | Bool _ -> TBool
+
+  | BinOp op, e1, e2-> (match type_of e1 env, type_of e2 env with
+      | TInt, TInt when op = Plus || op = Minus || op = Times -> TInt
+      | TInt, TInt when op = LT || op = GT || op = EQ -> TBool
+      | _ -> failwith "Type Error")
+
+  | If (e1, e2 ,e3) -> 
+      let t_cond = type_of e1 env in
+      let t_true = type_of e2 env in
+      let t_false = type_of e3 env in
+        if TBool = t_cond && t_true = t_false then TBool
+        else failwith "Type Error"
+
+  | Id x -> TypEnv.lookup x env
+
+  | Let (x, with_e, in_e) ->
+      let env' = TypEnv.bind x (type_of with_e env) in type_of in_e env'
+
+  | Fun (x, t, b) -> let env' = TypEnv.bind x t in TFun (t, type_of b env')
+
+  | Fix (x, t, b) -> "NYI"
+
+  | App (e1, e2) -> (match type_of e1 env with
+      | TFun (t1, t2) -> if type_of e2 env = t1 then t2 else failwith "Type Error"
+      | _ -> failwith "Type Error")
+
+  | Empty t -> TList t
+
+  | Cons (e1, e2) -> (match type_of e2 env with
+      | TList t -> if t = type_of e1 env then TList t else failwith "Type Error"
+      | _ -> failwith "Type Error")
+
+  | Head e -> (match type_of e env with
+      | TList t -> t
+      | _ -> failwith "Type Error")
+
+  | Tail e -> (match type_of e env with
+      | TList t -> TList t
+      | _ -> failwith "Type Error")
+
+  | IsEmpty e -> (match type_of e env with
+      | TList t -> TBool
+      | _ -> failwith "Type Error")
+
+  | Tuple (e_list) -> TTuple (List.map (type_of env) e_list)
+
+  | Proj (e, i) -> (match type_of e env with
+      | TTuple (t_list) -> List.nth t_list i
+      | _ -> failwith "Type Error")
+
+  | _ -> "Type Error"
+      
+
+
+let type_of (e : exp) : typ = _type_of TypEnv.empty e
+
+
+(* TODO : Rename consistently *)
 type context =  
   | Top
   | BinOpR of binOp * exp * context
@@ -70,7 +163,9 @@ let app_relational_op (op : binOp) (nL : int) (nR : int) : bool =
 
 
 
-let step (e : exp) (cont : context) (env : env) : exp * context * env = match (e, cont) with
+let step (e : exp) 
+         (cont : context)
+         (env : ExpEnv.env) : exp * context * ExpEnv.env = match (e, cont) with
   | BinOp (op, eL, eR), cont      -> eL, BinOpR (op, eR, cont), env
   | Int nL, BinOpR (op, eR, cont) -> eR, BinOpL (op, nL, cont), env
   | Int nR, BinOpL (op, eL, cont) ->
@@ -84,7 +179,6 @@ let step (e : exp) (cont : context) (env : env) : exp * context * env = match (e
 
   | Id x, cont -> 
       let v = lookup x env in v, cont, env
-
 
   (* Invariant for Let bindings : We want to restore the environment after evaluating
    * in_e expression
@@ -104,9 +198,8 @@ let step (e : exp) (cont : context) (env : env) : exp * context * env = match (e
   | v, RestoreEnv (env', cont) when is_value v -> v, cont, env'
 
 
-  (* TODO : Take care of types *)
   | App (e1, e2), cont -> e1, AppR (e2, cont), env
-  | Fun (x, t, body), AppR (e2, cont) -> e2, AppL (x, body, env, cont), env
+  | Fun (x, t, body), AppR (e2, cont) when t = type_of e2 -> e2, AppL (x, body, env, cont), env
   | v, AppL (x, body, env', cont) when is_value v ->
       body, RestoreEnv (env', cont), bind x v env
 
@@ -159,18 +252,17 @@ let step (e : exp) (cont : context) (env : env) : exp * context * env = match (e
         then Tuple (rev v::vlist), cont, env
         else hd elist, TupleCont (tl elist, v::vlist, cont), env
 
-  (* TODO : Reads and Writes *)
-  | Read (typ), cont -> (match typ with
-      | TInt -> 
-      | TBool ->
-      | TFun (t1, t2) -> Read 
-      | TTuple (tlist) ->
-      | TList t ->)
+  | Read (typ), cont -> (match parse (read_line ()) with
+     | ParseError err -> failwith err
+     | Exp e' when is_value e' && typ = type_of e' -> e', cont, env
+     | _ -> failwith "Not a value")
 
   (* XXX : what exp to return? *)
   (* XXX : Test if Write is capable of printing composite expressions *)
+  (* TODO : Check if print_exp prints a new line after the expression *)
   | Write (v), cont when is_value v -> print_exp v; v, cont, env
-  | _ -> failwith "Unexpected control string"
+
+  | _ -> failwith "Unexpected Expression : Check your types"
   
 
 let rec run (e : exp) (cont : context) (env : env) = match (e, cont) with
