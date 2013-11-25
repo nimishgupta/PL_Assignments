@@ -83,8 +83,9 @@ let rec _type_of (env : TypEnv.env) (e : exp) : typ = match e with
 
   | Fun (x, t, b) -> let env' = TypEnv.bind x t env in TFun (t, _type_of env' b)
 
-  (* TODO *)
-  | Fix (x, t, b) -> failwith "NYI"
+  | Fix (x, t, b) -> (match t with
+      | TFun _ -> let env' = TypEnv.bind x t env in if t =_type_if env' b then t else failwith "Type Error"
+      | _ -> failwith "Type Error")
 
   | App (e1, e2) -> (match _type_of env e1 with
       | TFun (t1, t2) when _type_of env e2 = t1 -> t2
@@ -126,7 +127,7 @@ type context =
   | Top
   | BinOpR      of binOp * exp * context
   | BinOpL      of binOp * int * context
-  | IfC         of exp * exp * context
+  | IfCont      of exp * exp * context
   | LetV        of id * exp * ExpEnv.env * context
   | RestoreEnv  of ExpEnv.env * context
   | AppR        of exp * context
@@ -171,9 +172,8 @@ let step (e : exp)
         | Plus | Minus | Times -> Int  (app_arith_op op nL nR), cont, env
         | LT   | GT    | EQ    -> Bool (app_relational_op op nL nR), cont, env)
 
-
-  | If (eC, eT, eF), cont -> eC, IfC (eT, eF, cont), env
-  | Bool b, IfC (eT, eF, cont) -> if b then eT, cont, env else eF, cont, env
+  | If (eC, eT, eF), cont -> eC, IfCont (eT, eF, cont), env
+  | Bool b, IfCont (eT, eF, cont) -> if b then eT, cont, env else eF, cont, env
 
   | Id x, cont -> 
       let v = ExpEnv.lookup x env in v, cont, env
@@ -201,8 +201,12 @@ let step (e : exp)
   | v, AppL (x, body, env', cont) when is_value v ->
       body, RestoreEnv (env', cont), ExpEnv.bind x v env
 
-  (* TODO *)
-  | Fix (x, t, body), AppR (e2, cont) -> failwith "NYI"
+  (* augment environment by replacing x by a fixpoint
+   * App e2 on body 
+   *)
+
+  (* It may introduce duplicates in the environment *)
+  | Fix (x, _, body), AppR (e2, _) -> App (body, e2), RestoreEnv (env, cont), ExpEnv.bind x e env
 
   (* List processing *)
 
@@ -261,9 +265,17 @@ let step (e : exp)
   (* TODO : Check if print_exp prints a new line after the expression *)
   | Write (v), cont when is_value v -> M_util.print_exp v; v, cont, env
 
-  | _ -> failwith "Unexpected Expression : Check your types"
+  | _ -> failwith "Unexpected Expression : Invalid Expression/Type"
   
 
 let rec run (e : exp) (cont : context) (env : ExpEnv.env) = match (e, cont) with
   | v, Top when is_value v -> v
   | e, k -> let (e', k', env') = step e k env in run e' k' env' 
+
+
+
+(*****************************************************************************************
+ *                                                                                       *
+ *                                       TESTS                                           *
+ *                                                                                       *
+ *****************************************************************************************)
