@@ -3,7 +3,7 @@ open M_syntax
 module Env =
 struct
 
-  module IdMap = Map.Make (Identifier)
+  module IdMap = Identifier.Map
 
   type 'a env = 'a IdMap.t
 
@@ -96,6 +96,10 @@ type context =
   | IsEmptyCont of context
   | ProjCont    of int * context
   | TupleCont   of exp list * exp list * context
+
+let empty_context : context = Top
+
+let is_empty_context (k : context) : bool = Top = k
   
 
 let rec is_value (e : exp) : bool = match e with
@@ -210,16 +214,16 @@ let step (e : exp)
      | _ -> failwith "Not a value")
 
   (* XXX : what exp to return when printing? *)
-  (* XXX : Test if Write is capable of printing composite expressions *)
-  (* TODO : Check if print_exp prints a new line after the expression *)
   | Write (v), cont when is_value v -> M_util.print_exp v; print_newline (); v, cont, env
 
   | _ -> failwith "Unexpected Expression : Invalid Expression/Type"
 
 
-let rec run (e : exp) (cont : context) (env : exp_env) = let _ = type_of e in match (e, cont) with
+let rec run (e : exp) (cont : context) (env : exp_env) = match (e, cont) with
   | v, Top when is_value v -> v
   | e, k -> let (e', k', env') = step e k env in run e' k' env' 
+
+let eval (e : exp) : exp = let _ = type_of e in run e empty_context Env.empty
 
 
 
@@ -234,8 +238,8 @@ let rec repl () =
   print_string "> ";
   match M_util.parse (read_line ()) with
     | M_util.Exp exp -> 
-        let v = run exp Top Env.empty in
-        let _ = run (Write v) Top Env.empty in
+        let v = eval exp in
+        let _ = eval (Write v) in
         repl ()
 
     | M_util.ParseError msg ->
@@ -252,11 +256,28 @@ let _ =
     | [ exe; f] -> (match (M_util.parse_from_file f) with
 
                      | M_util.Exp exp ->
-                       let v = run exp Top Env.empty in
-                       let _ = run (Write v) Top Env.empty in ()
+                       let v = eval exp in
+                       let _ = eval (Write v) in ()
 
                      | M_util.ParseError msg -> 
                         print_string msg;
                         print_newline ()
                    )
     | _ -> ()
+
+
+let exec_exp (e_str : string) : exp = match M_util.parse e_str with 
+  | M_util.Exp exp -> eval exp
+  | M_util.ParseError msg -> failwith msg
+
+
+let _ = exec_exp "let x = 300 in (let x = 50 in x) + x"
+
+
+TEST = exec_exp "3"     = Int (3)
+TEST = exec_exp "true"  = Bool (true)
+TEST = exec_exp "false" = Bool (false)
+TEST = exec_exp "if true then 1 else 0" = Int (1)
+TEST = exec_exp "if false then 1 else 0" = Int (0)
+
+
