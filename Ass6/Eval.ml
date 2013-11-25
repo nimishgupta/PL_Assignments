@@ -16,21 +16,26 @@ sig
 
 end = struct
 
-  module IdMap = Identifier.Map
+  module Env = Map.Make (Identifier)
 
-  type env = ExpEnv of value IdMap.t
-  and value = exp (* TODO : Parameterize *) 
+  type env = exp Env.t
 
-  let empty = ExpEnv IdMap.empty
+  let empty = Env.empty
 
-  let lookup x (ExpEnv env) = IdMap.find x env
+  let print_env_elem id exp = print_string ((Identifier.to_string id) ^ " == " ^ (M_util.string_of_exp exp) ^ "\n")
 
-  let bind x v (ExpEnv env) = ExpEnv (IdMap.add x v env)
+  let print_env env = Env.iter print_env_elem env
+
+  let lookup x env' =
+     try Env.find x env'
+     with Not_found -> print_string ("Identifier : " ^ (Identifier.to_string x) ^ " not foun in environment below\n"); print_env env'; raise Not_found
+
+  let bind = Env.add
+
 
 end
 
 
-(* TODO : Parameterized module *)
 module TypEnv : 
 
 sig
@@ -45,16 +50,24 @@ sig
 
 end = struct
 
-  module IdMap = Identifier.Map
+  module Env = Map.Make (Identifier)
 
-  type env = TypEnv of value IdMap.t
-  and value = typ (* TODO : Parameterize *) 
+  type env = typ Env.t
 
-  let empty = TypEnv IdMap.empty
+  let empty = Env.empty
 
-  let lookup x (TypEnv env) = IdMap.find x env
+  let print_env_elem id typ = print_string ((Identifier.to_string id) ^ " == " ^ (M_util.string_of_typ typ) ^ "\n")
 
-  let bind x v (TypEnv env) = TypEnv (IdMap.add x v env)
+  let print_env env = Env.iter print_env_elem env
+
+
+  let lookup x env' = 
+     try Env.find x env'
+     with Not_found -> print_string ("Identifier : " ^ (Identifier.to_string x) ^ " not foun in environment below\n"); print_env env'; raise Not_found
+
+
+
+  let bind x v env = Env.add x v env
 
 end
 
@@ -84,7 +97,7 @@ let rec _type_of (env : TypEnv.env) (e : exp) : typ = match e with
   | Fun (x, t, b) -> let env' = TypEnv.bind x t env in TFun (t, _type_of env' b)
 
   | Fix (x, t, b) -> (match t with
-      | TFun _ -> let env' = TypEnv.bind x t env in if t =_type_if env' b then t else failwith "Type Error"
+      | TFun _ -> let env' = TypEnv.bind x t env in if t = _type_of env' b then t else failwith "Type Error"
       | _ -> failwith "Type Error")
 
   | App (e1, e2) -> (match _type_of env e1 with
@@ -122,7 +135,6 @@ let rec _type_of (env : TypEnv.env) (e : exp) : typ = match e with
 let type_of (e : exp) : typ = _type_of TypEnv.empty e
 
 
-(* TODO : Rename consistently *)
 type context =  
   | Top
   | BinOpR      of binOp * exp * context
@@ -131,7 +143,7 @@ type context =
   | LetV        of id * exp * ExpEnv.env * context
   | RestoreEnv  of ExpEnv.env * context
   | AppR        of exp * context
-  | AppL        of id * exp * ExpEnv.env * context
+  | AppL        of id * typ * exp * ExpEnv.env * context
   | ConsL       of exp * context
   | ConsR       of exp * context
   | HeadCont    of context
@@ -163,6 +175,9 @@ let app_relational_op (op : binOp) (nL : int) (nR : int) : bool =
     | _ -> failwith "Invalid op"
 
 
+
+
+
 let step (e : exp) 
          (cont : context)
          (env : ExpEnv.env) : exp * context * ExpEnv.env = match (e, cont) with
@@ -175,8 +190,7 @@ let step (e : exp)
   | If (eC, eT, eF), cont -> eC, IfCont (eT, eF, cont), env
   | Bool b, IfCont (eT, eF, cont) -> if b then eT, cont, env else eF, cont, env
 
-  | Id x, cont -> 
-      let v = ExpEnv.lookup x env in v, cont, env
+  | Id x, cont -> let v = ExpEnv.lookup x env in v, cont, env
 
   (* Invariant for Let bindings : We want to restore the environment after evaluating
    * in_e expression
@@ -197,16 +211,13 @@ let step (e : exp)
 
 
   | App (e1, e2), cont -> e1, AppR (e2, cont), env
-  | Fun (x, t, body), AppR (e2, cont) when t = type_of e2 -> e2, AppL (x, body, env, cont), env
-  | v, AppL (x, body, env', cont) when is_value v ->
+  | Fun (x, t, body), AppR (e2, cont) -> e2, AppL (x, t, body, env, cont), env
+  | v, AppL (x, t, body, env', cont) when is_value v && t = type_of v ->
       body, RestoreEnv (env', cont), ExpEnv.bind x v env
 
-  (* augment environment by replacing x by a fixpoint
-   * App e2 on body 
-   *)
-
-  (* It may introduce duplicates in the environment *)
-  | Fix (x, _, body), AppR (e2, _) -> App (body, e2), RestoreEnv (env, cont), ExpEnv.bind x e env
+  (* augment environment by replacing x by a fixpoint *)
+  (* | Fix (x, _, body), cont -> body, RestoreEnv (env, cont), ExpEnv.bind x e env *)
+  | Fix (x, _, body), cont -> body, cont, ExpEnv.bind x e env
 
   (* List processing *)
 
@@ -279,3 +290,36 @@ let rec run (e : exp) (cont : context) (env : ExpEnv.env) = match (e, cont) with
  *                                       TESTS                                           *
  *                                                                                       *
  *****************************************************************************************)
+
+
+let rec repl () = 
+  print_string "> ";
+  match M_util.parse (read_line ()) with
+    | M_util.Exp exp -> 
+        let v = run exp Top ExpEnv.empty in
+        let _ = run (Write v) Top ExpEnv.empty in
+        print_newline ();
+        repl ()
+    | M_util.ParseError msg ->
+        print_string msg;
+        print_newline ();
+        repl ()
+
+
+let _ =  
+  match Array.to_list Sys.argv with
+    | [ exe; "repl" ] -> print_string "Press Ctrl + C to quit.\n"; repl ()
+    
+    (* parse from file specified on command line *)
+    | [ exe; f] -> (match (M_util.parse_from_file f) with
+
+                     | M_util.Exp exp ->
+                       let v = run exp Top ExpEnv.empty in
+                       let _ = run (Write v) Top ExpEnv.empty in
+                       print_newline ()
+
+                     | M_util.ParseError msg -> 
+                        print_string msg;
+                        print_newline ()
+                   )
+    | _ -> ()
