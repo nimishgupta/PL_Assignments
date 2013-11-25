@@ -1,79 +1,23 @@
 open M_syntax
 
+module Env =
+struct
 
-(* TODO : Make a functor on exp and typ *)
-module ExpEnv : 
+  module IdMap = Map.Make (Identifier)
 
-sig
-  
-  type env
+  type 'a env = 'a IdMap.t
 
-  val empty : env
-
-  val lookup : id -> env -> exp
-
-  val bind : id -> exp -> env -> env
-
-end = struct
-
-  module Env = Map.Make (Identifier)
-
-  type env = exp Env.t
-
-  let empty = Env.empty
-
-  let print_env_elem id exp = print_string ((Identifier.to_string id) ^ " == " ^ (M_util.string_of_exp exp) ^ "\n")
-
-  let print_env env = Env.iter print_env_elem env
-
-  let lookup x env' =
-     try Env.find x env'
-     with Not_found -> print_string ("Identifier : " ^ (Identifier.to_string x) ^ " not foun in environment below\n"); print_env env'; raise Not_found
-
-  let bind = Env.add
-
+  let empty  = IdMap.empty
+  let lookup = IdMap.find
+  let bind   = IdMap.add
 
 end
 
-
-module TypEnv : 
-
-sig
-  
-  type env
-
-  val empty : env
-
-  val lookup : id -> env -> typ
-
-  val bind : id -> typ -> env -> env
-
-end = struct
-
-  module Env = Map.Make (Identifier)
-
-  type env = typ Env.t
-
-  let empty = Env.empty
-
-  let print_env_elem id typ = print_string ((Identifier.to_string id) ^ " == " ^ (M_util.string_of_typ typ) ^ "\n")
-
-  let print_env env = Env.iter print_env_elem env
+type exp_env = exp Env.env
+type typ_env = typ Env.env
 
 
-  let lookup x env' = 
-     try Env.find x env'
-     with Not_found -> print_string ("Identifier : " ^ (Identifier.to_string x) ^ " not foun in environment below\n"); print_env env'; raise Not_found
-
-
-
-  let bind x v env = Env.add x v env
-
-end
-
-
-
-let rec _type_of (env : TypEnv.env) (e : exp) : typ = match e with
+let rec _type_of (env : typ_env) (e : exp) : typ = match e with
   | Int _ -> TInt
   | Bool _ -> TBool
 
@@ -89,15 +33,15 @@ let rec _type_of (env : TypEnv.env) (e : exp) : typ = match e with
         if TBool = t_cond && t_true = t_false then t_true
         else failwith "Type Error"
 
-  | Id x -> TypEnv.lookup x env
+  | Id x -> Env.lookup x env
 
   | Let (x, with_e, in_e) ->
-      let env' = TypEnv.bind x (_type_of env with_e) env in _type_of env' in_e
+      let env' = Env.bind x (_type_of env with_e) env in _type_of env' in_e
 
-  | Fun (x, t, b) -> let env' = TypEnv.bind x t env in TFun (t, _type_of env' b)
+  | Fun (x, t, b) -> let env' = Env.bind x t env in TFun (t, _type_of env' b)
 
   | Fix (x, t, b) -> (match t with
-      | TFun _ -> let env' = TypEnv.bind x t env in if t = _type_of env' b then t else failwith "Type Error"
+      | TFun _ -> let env' = Env.bind x t env in if t = _type_of env' b then t else failwith "Type Error"
       | _ -> failwith "Type Error")
 
   | App (e1, e2) -> (match _type_of env e1 with
@@ -128,11 +72,12 @@ let rec _type_of (env : TypEnv.env) (e : exp) : typ = match e with
       | TTuple (t_list) -> List.nth t_list i
       | _ -> failwith "Type Error")
 
-  | _ -> failwith "Type Error"
-      
+  | Read t -> t
+
+  | Write e -> _type_of env e
 
 
-let type_of (e : exp) : typ = _type_of TypEnv.empty e
+let type_of (e : exp) : typ = _type_of Env.empty e
 
 
 type context =  
@@ -140,10 +85,10 @@ type context =
   | BinOpR      of binOp * exp * context
   | BinOpL      of binOp * int * context
   | IfCont      of exp * exp * context
-  | LetV        of id * exp * ExpEnv.env * context
-  | RestoreEnv  of ExpEnv.env * context
+  | LetV        of id * exp * exp_env * context
+  | RestoreEnv  of exp_env * context
   | AppR        of exp * context
-  | AppL        of id * typ * exp * ExpEnv.env * context
+  | AppL        of id * typ * exp * exp_env * context
   | ConsL       of exp * context
   | ConsR       of exp * context
   | HeadCont    of context
@@ -175,12 +120,9 @@ let app_relational_op (op : binOp) (nL : int) (nR : int) : bool =
     | _ -> failwith "Invalid op"
 
 
-
-
-
 let step (e : exp) 
          (cont : context)
-         (env : ExpEnv.env) : exp * context * ExpEnv.env = match (e, cont) with
+         (env : exp_env) : exp * context * exp_env = match (e, cont) with
   | BinOp (op, eL, eR), cont      -> eL, BinOpR (op, eR, cont), env
   | Int nL, BinOpR (op, eR, cont) -> eR, BinOpL (op, nL, cont), env
   | Int nR, BinOpL (op, nL, cont) -> (match op with 
@@ -190,7 +132,7 @@ let step (e : exp)
   | If (eC, eT, eF), cont -> eC, IfCont (eT, eF, cont), env
   | Bool b, IfCont (eT, eF, cont) -> if b then eT, cont, env else eF, cont, env
 
-  | Id x, cont -> let v = ExpEnv.lookup x env in v, cont, env
+  | Id x, cont -> let v = Env.lookup x env in v, cont, env
 
   (* Invariant for Let bindings : We want to restore the environment after evaluating
    * in_e expression
@@ -206,20 +148,17 @@ let step (e : exp)
    *)
   | Let (x, with_e, in_e), cont -> with_e, LetV (x, in_e, env, cont), env
   | v, LetV (x, in_e, env', cont) when is_value v -> 
-      in_e, RestoreEnv (env', cont), ExpEnv.bind x v env
+      in_e, RestoreEnv (env', cont), Env.bind x v env
   | v, RestoreEnv (env', cont) when is_value v -> v, cont, env'
 
 
   | App (e1, e2), cont -> e1, AppR (e2, cont), env
   | Fun (x, t, body), AppR (e2, cont) -> e2, AppL (x, t, body, env, cont), env
   | v, AppL (x, t, body, env', cont) when is_value v && t = type_of v ->
-      body, RestoreEnv (env', cont), ExpEnv.bind x v env
+      body, RestoreEnv (env', cont), Env.bind x v env
 
   (* augment environment by replacing x by a fixpoint *)
-  (* | Fix (x, _, body), cont -> body, RestoreEnv (env, cont), ExpEnv.bind x e env *)
-  | Fix (x, _, body), cont -> body, cont, ExpEnv.bind x e env
-
-  (* List processing *)
+  | Fix (x, _, body), cont -> body, cont, Env.bind x e env
 
   | Head e, cont -> e, HeadCont (cont), env
   | v, HeadCont (cont) when is_value v -> (match v with
@@ -245,7 +184,6 @@ let step (e : exp)
          | _ -> failwith "Type Error : Cons Type mismatch")
      | _ -> failwith "Expected list")
 
-  (* XXX : Write Test : Is is_value guard necessary, may cause a infinite recursion when not done *)
   | Cons (atm, lst), cont when not (is_value atm && is_value lst) -> atm, ConsR (lst, cont), env
   | vatm, ConsR (lst, cont) when is_value vatm -> lst, ConsL (vatm, cont), env
   | vlst, ConsL (vatm, cont) when is_value vlst -> Cons (vatm, vlst), cont, env
@@ -274,12 +212,12 @@ let step (e : exp)
   (* XXX : what exp to return when printing? *)
   (* XXX : Test if Write is capable of printing composite expressions *)
   (* TODO : Check if print_exp prints a new line after the expression *)
-  | Write (v), cont when is_value v -> M_util.print_exp v; v, cont, env
+  | Write (v), cont when is_value v -> M_util.print_exp v; print_newline (); v, cont, env
 
   | _ -> failwith "Unexpected Expression : Invalid Expression/Type"
-  
 
-let rec run (e : exp) (cont : context) (env : ExpEnv.env) = match (e, cont) with
+
+let rec run (e : exp) (cont : context) (env : exp_env) = let _ = type_of e in match (e, cont) with
   | v, Top when is_value v -> v
   | e, k -> let (e', k', env') = step e k env in run e' k' env' 
 
@@ -296,10 +234,10 @@ let rec repl () =
   print_string "> ";
   match M_util.parse (read_line ()) with
     | M_util.Exp exp -> 
-        let v = run exp Top ExpEnv.empty in
-        let _ = run (Write v) Top ExpEnv.empty in
-        print_newline ();
+        let v = run exp Top Env.empty in
+        let _ = run (Write v) Top Env.empty in
         repl ()
+
     | M_util.ParseError msg ->
         print_string msg;
         print_newline ();
@@ -314,9 +252,8 @@ let _ =
     | [ exe; f] -> (match (M_util.parse_from_file f) with
 
                      | M_util.Exp exp ->
-                       let v = run exp Top ExpEnv.empty in
-                       let _ = run (Write v) Top ExpEnv.empty in
-                       print_newline ()
+                       let v = run exp Top Env.empty in
+                       let _ = run (Write v) Top Env.empty in ()
 
                      | M_util.ParseError msg -> 
                         print_string msg;
