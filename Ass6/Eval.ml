@@ -89,7 +89,7 @@ type context =
   | IfCont      of exp * exp * exp_env * context
   | LetV        of id * exp * exp_env * context
   | AppR        of exp * exp_env * context
-  | AppL        of id * typ * exp * exp_env * context
+  | AppL        of id * typ * exp * exp_env * exp_env * context
   | ConsL       of exp * exp_env * context
   | ConsR       of exp * exp_env * context
   | HeadCont    of exp_env * context
@@ -139,6 +139,7 @@ let step (e : exp)
   | Bool b, IfCont (eT, eF, env', cont) -> if b then eT, cont, env' else eF, cont, env'
 
   | Id x, cont -> 
+      (* print_string ("Looking for : " ^ (Identifier.to_string x) ^ "\n"); *)
       let Env _env = env in 
       let (v, env') = Env.lookup x _env in
       v, cont, env'
@@ -157,16 +158,20 @@ let step (e : exp)
    *)
   | Let (x, with_e, in_e), cont -> with_e, LetV (x, in_e, env, cont), env
   | v, LetV (x, in_e, env', cont) when is_value v -> 
-      let Env _env = env' in
-      in_e, cont, Env (Env.bind x (v,env') _env)
+      (match v with
+        (* If with_e evals to a function-value then we need to preserve its environment *)
+        | Fun _ -> let Env _env = env  in in_e, cont, Env (Env.bind x (v, env)  _env)
+        | _     -> let Env _env = env' in in_e, cont, Env (Env.bind x (v, env') _env))
 
   | App (e1, e2), cont -> e1, AppR (e2, env, cont), env
-  | Fun (x, t, body), AppR (e2, env', cont) -> e2, AppL (x, t, body, env, cont), env'
-  | v, AppL (x, t, body, env', cont) when is_value v && t = type_of v ->
-      let Env _env = env' in 
-      body, cont, Env (Env.bind x (v, env) _env)
+  | Fun (x, t, body), AppR (e2, env', cont) -> e2, AppL (x, t, body, env, env', cont), env'
+  | v, AppL (x, t, body, fenv, orig_env, cont) when is_value v && t = type_of v ->
+      let Env _fenv = fenv in 
+      body, cont, Env (Env.bind x (v, orig_env) _fenv)
 
-  | Fix (x, _, body), cont -> let Env _env = env in body, cont, Env (Env.bind x (e,env) _env)
+  | Fix (x, _, body), cont -> 
+      let Env _env = env in
+      body, cont, Env (Env.bind x (e,env) _env)
 
   | Head e, cont -> e, HeadCont (env, cont), env
   | v, HeadCont (env', cont) when is_value v -> (match v with
@@ -296,26 +301,38 @@ TEST = exec_exp "if true then 1 + 2 else 3 + 5" = Int (3)
 TEST = exec_exp "let x = 5 in let y = 6 in x + y" = Int (11)
 TEST = exec_exp "let y = 5 in let x = 6 in x + y" = Int (11)
 
+(* env check *)
 TEST = exec_exp "let x = 11 in x + (let x = 5 in x) + (let x = 8 in x)" = Int (24)
 
+(* Basic function evaluation *)
 TEST = exec_exp "let double = fun (x : int) -> 2 * x in double 5" =
        exec_exp "let double = fun (n : int) -> n + n in double 5"
 
-
-(* lazy use of let binding *)
+(* Check closure *)
 TEST = exec_exp "(let x = 5 in fun (y : int) -> x * y) 2" = Int (10)
 
 (* Check currying *)
 TEST = exec_exp "let add = fun (x : int) -> fun (y : int) -> x + y in (add 3) 5" = Int (8)
 
-(* TODO : Check Function pass *)
-(* TODO : Check function return *)
-(* TODO : Check closure *)
-
+(* Check Higher order functions *)
+TEST = exec_exp "let double = fun (x : int) -> x + x in
+                 let binop = fun (op : int -> int) ->
+                               fun (x : int) -> op x in
+                 binop double 6" = Int (12)
 
 (* class test case *)
 TEST = exec_exp "let x = 300 in (let x = 50 in x) + x" = Int (350)
 
+
+TEST = exec_exp "let inc = (fun (x : int) -> 
+                              fun (y : int) ->
+                                x + y) 1 in
+                 inc 8" = Int (9)
+(* fix *)
+TEST = exec_exp "let fact = fix (self : int -> int) ->
+                              fun (n : int) -> 
+                                if 0 = n then 1 else n * self (n - 1) in
+                 fact 5" = Int (120)
 
 (* Check if incorret doesn't evaluate  *)
 
