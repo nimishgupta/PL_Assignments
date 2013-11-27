@@ -173,10 +173,10 @@ let baz = typfun A ->
 let Discriminate_foo = typfun A ->
                          typfun R ->
                            fun (e1 : [[Foo A]]) ->
-                             fun (e2 : R) ->
+                             fun (e2 : A -> A -> R) ->
                                fun (e3 : R) ->
                                  e1 <R> (fun (x : A) -> 
-                                           fun (y : A) -> e2)
+                                           fun (y : A) -> e2 x y)
                                         e3
 
 ;;
