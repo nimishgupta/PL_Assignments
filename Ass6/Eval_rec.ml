@@ -24,6 +24,10 @@ let rec eval (e : exp) (env : env) : value -> match e with
             eval body env''
         | _ -> failwith "Expected a function"
 
+  | Fix (self, _, self_body) ->
+      let env' = Env.bind self e env
+      in eval self_body env'
+
   | Empty t -> Empty (t)
   | Cons (e1, e2) ->
       let v1 = eval e1 in 
