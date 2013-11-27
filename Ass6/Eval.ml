@@ -314,6 +314,9 @@ TEST = exec_exp "(let x = 5 in fun (y : int) -> x * y) 2" = Int (10)
 (* Check currying *)
 TEST = exec_exp "let add = fun (x : int) -> fun (y : int) -> x + y in (add 3) 5" = Int (8)
 
+let double = "let double = fun (x : int) -> x + x in"
+
+
 (* Check Higher order functions *)
 TEST = exec_exp "let double = fun (x : int) -> x + x in
                  let binop = fun (op : int -> int) ->
@@ -334,5 +337,33 @@ TEST = exec_exp "let fact = fix (self : int -> int) ->
                                 if 0 = n then 1 else n * self (n - 1) in
                  fact 5" = Int (120)
 
-(* Check if incorret doesn't evaluate  *)
+(* List tests *)
+TEST = exec_exp "let length = fix (self : int list -> int) ->
+                                fun (lst : int list) ->
+                                  if empty? lst
+                                  then 0
+                                  else 1 + self (tail lst) in
+                 let lst = 1 :: 2 :: 3 :: empty<int> in 
+                 length lst" = Int (3)
 
+let map = "let int_map = fix (self : (int -> int) -> int list -> int list) ->
+                           fun (f : int -> int) ->
+                             fun (lst : int list) ->
+                               if empty? lst
+                               then empty<int>
+                               else f (head lst) :: self f (tail lst) in"
+
+
+TEST = exec_exp (map ^ " " ^ double ^ " " ^ "let lst = 1 :: 2 :: 3 :: empty<int> in int_map double lst") = Cons (Int 2, Cons (Int 4, Cons (Int 6, Empty (TInt))))
+
+(* List of functions *)
+TEST = exec_exp "let id = fun (x : int) -> x in
+                 let double = fun (x : int) -> 2 * x in
+                 let triple = fun (x : int) -> 3 * x in
+                 let lst = id :: double :: triple :: empty<int -> int> in
+                 let y = 1 in
+((head lst) y) :: ((head (tail lst)) y) :: ((head (tail (tail lst))) y) :: empty <int>" = 
+Cons (Int 1, Cons (Int 2, Cons (Int 3, Empty TInt)))
+
+TEST = exec_exp "let x = (1, 2, 3) in x.0 :: x.1 :: x.2 :: empty<int>" =
+Cons (Int 1, Cons (Int 2, Cons (Int 3, Empty TInt)))
