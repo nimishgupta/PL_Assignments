@@ -97,6 +97,7 @@ type context =
   | IsEmptyCont of exp_env * context
   | ProjCont    of int * exp_env * context
   | TupleCont   of exp list * exp list * exp_env * context
+  | WriteCont   of exp_env * context
 
 let empty_context : context = Top
 
@@ -221,8 +222,11 @@ let step (e : exp)
      | M_util.Exp e' when is_value e' && typ = type_of e' -> e', cont, env
      | _ -> failwith "Not a value")
 
+  | Write (e), cont -> e, WriteCont (env, cont), env
+
   (* XXX : what exp to return when printing? *)
-  | Write (v), cont when is_value v -> M_util.print_exp v; print_newline (); v, cont, env
+  | v, WriteCont (env', cont) when is_value v -> 
+      M_util.print_exp v; print_newline (); v, cont, env'
 
   | _ -> failwith "Unexpected Expression : Invalid Expression/Type"
 
@@ -367,3 +371,7 @@ Cons (Int 1, Cons (Int 2, Cons (Int 3, Empty TInt)))
 
 TEST = exec_exp "let x = (1, 2, 3) in x.0 :: x.1 :: x.2 :: empty<int>" =
 Cons (Int 1, Cons (Int 2, Cons (Int 3, Empty TInt)))
+
+TEST = exec_exp "let a = 3 in
+                 let b = 2 in
+                 write (a + b)" = Int 5
