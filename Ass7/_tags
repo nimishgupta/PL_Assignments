@@ -1,0 +1,2 @@
+true : package(core), package(async), package(cohttp), package(cohttp.async)
+true: thread
