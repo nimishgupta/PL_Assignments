@@ -104,16 +104,6 @@ let app_relational_op (op : binOp) (nL : int) (nR : int) : bool =
     | _ -> failwith "Invalid op"
 
 
-
-(*
-module type IO = sig
-  val read : unit -> string
-  val write : Exp.exp -> unit
-end
-
-module Continuation (IO : IO) = struct
-*)
-
   type context =  
     | Top
     | BinOpR      of binOp * exp * exp_env * context
@@ -214,7 +204,6 @@ module Continuation (IO : IO) = struct
         if [] = elist then Tuple (rev (v::vlist)), cont, env'
         else hd elist, TupleCont (tl elist, v::vlist, env', cont), env'
 
-    (* TODO : Refactor *)
     | Read (typ), cont -> (match M_util.parse (read_line ()) with
         | M_util.ParseError err -> failwith err
         | M_util.Exp e' when is_value e' && typ = type_of e' -> e', cont, env
@@ -230,88 +219,63 @@ module Continuation (IO : IO) = struct
 
 
 
-
 let rec run (e : exp) (cont : context) (env : exp_env) = match (e, cont) with
   | v, Top when is_value v -> v
   | e, k -> let (e', k', env') = step e k env in run e' k' env' 
 
 
+let to_native (s : string) : string =
+  let open Cryptokit in
+  transform_string (Hexa.decode ()) s
+
+let to_web (s : string) : string = 
+  let open Cryptokit in
+  transform_string (Hexa.encode ()) s
 
 
+let crypto_sign (k : Cryptokit.RSA.key) (s : string) : string =
+  let d = Digest.to_hex (Digest.string s) in
+  Cryptokit.RSA.sign k d
 
-let to_result (e : M_syntax.exp) : string = 
-  "<HTML><BODY>" ^ (M_util.string_of_exp e) ^ "</BODY></HTML>"
+let sign_match (k : Cryptokit.RSA.key) (sign : string) (s : string) : bool =
+  let d  = Cryptokit.RSA.unwrap_signature k sign in
+  let d' = (Digest.to_hex (Digest.string s)) in
+  (* XXX : Cryptokit idiosyncracy *)
+  d' = String.sub d (String.length d - String.length d') (String.length d')
 
-
-let to_hexchar (i : int) : char =
-  assert (i >= 0 && i <= 15);
-  let base = if i >= 0 && i <= 9 
-             then Char.code '0' 
-             else (Char.code 'a') - 10 in
-  Char.chr (base + i)
-
-
-let char_to_hexstring (c : Char.t) : string = 
-  let code = Char.code c in 
-  let highc = to_hexchar ((code lsr 4) land 0xF) in
-  let lowc  = to_hexchar (code land 0xF) in
-  (String.make 1 highc) ^ (String.make 1 lowc)
-
-let bytes_to_hexstring (b : string) : string =
-  let r = String.create ((String.length b) * 2) in
-  String.iteri (fun i c -> String.blit (char_to_hexstring c) 0 r (i*2) 2) b;
-  r
-
-let hexchar_to_int (c : Char.t): int =
-  let open Char in
-  if code c >= code '0' && code c <= code '9' then (code c - code '0')
-  else if code c >= code 'a' && code c <= code 'f' then (code c - code 'a' + 10)
-  else begin print_endline (String.make 1 c); failwith "Not a hexadecimal character" end
-  
-
-let hexs_to_byte (highc : Char.t) (lowc: Char.t) : Char.t =
-  let highi = hexchar_to_int highc in 
-  let lowi  = hexchar_to_int lowc  in
-  Char.chr ((highi lsl 4) lor lowi)
-
-let hexstring_to_bytes (h : string) : string = 
-  let l = String.length h in 
-  assert (l > 0 && (l mod 2) = 0);
-  let byte_str = String.create (l/2) in
-  String.iteri (fun i _ -> 
-                  if (i mod 2) = 0
-                  then let highc, lowc = h.[i], h.[i+1] in byte_str.[i/2] <- (hexs_to_byte highc lowc)) h;
-  byte_str
-  
-
-let to_form (t : M_syntax.typ) (env : exp_env) (k : context): string  =
-  assert (env = (Marshal.from_string (hexstring_to_bytes (bytes_to_hexstring (Marshal.to_string env []))) 0));
-  assert (k   = (Marshal.from_string (hexstring_to_bytes (bytes_to_hexstring (Marshal.to_string k   []))) 0));
-  let env_str = bytes_to_hexstring (Marshal.to_string env []) in
-  let cont_str = bytes_to_hexstring (Marshal.to_string k []) in
-  print_endline env_str; print_endline cont_str;
+let to_form (key : Cryptokit.RSA.key) (t : M_syntax.typ) (env : exp_env) (k : context): string  =
+  let open Cryptokit in
+  let env_str   = to_web (Marshal.to_string env []) in
+  let cont_str  = to_web (Marshal.to_string k [])   in
+  let type_str  = to_web (Marshal.to_string t [])   in
+  let env_sign  = to_web (crypto_sign key env_str)  in
+  let cont_sign = to_web (crypto_sign key cont_str) in
+  let type_sign = to_web (crypto_sign key type_str) in
   "<HTML><BODY> 
       <form name=\"myform\" action=\"\" method=\"POST\">
-      <input type=\"hidden\" name=\"env\" value=\"" ^ env_str ^ "\">
-      <input type=\"hidden\" name=\"con\" value=\"" ^ cont_str ^ "\">
+      <input type=\"hidden\" name=\"env_str\"   value=\"" ^ env_str    ^ "\">
+      <input type=\"hidden\" name=\"env_sign\"  value=\"" ^ env_sign   ^ "\">
+      <input type=\"hidden\" name=\"cont_str\"  value=\"" ^ cont_str   ^ "\">
+      <input type=\"hidden\" name=\"cont_sign\" value=\"" ^ cont_sign  ^ "\">
+      <input type=\"hidden\" name=\"type_str\"  value=\"" ^ type_str   ^ "\">
+      <input type=\"hidden\" name=\"type_sign\" value=\"" ^ type_sign  ^ "\">
+      Enter input (" ^ (M_util.string_of_typ t) ^ ") : 
       <input type=\"text\"   name=\"param\" value=\"\">
+      <input type=\"submit\" value=\"Submit\">
       </form>
   </BODY<</HTML>"
 
-      
+let to_result (e : M_syntax.exp) : string = 
+  "<HTML><BODY>" ^ "Result is : " ^ (M_util.string_of_exp e) ^ "</BODY></HTML>"
 
-let rec run_server (e : exp) (cont : context) (env : exp_env) : string = 
+let rec run_server (key : Cryptokit.RSA.key) (e : exp) (cont : context) (env : exp_env) : string = 
   match (e, cont) with
     | v, Top when is_value v -> to_result v
-    | Read (typ), cont -> to_form typ env cont
-    | e, k -> let (e', k', env') = step e k env in run_server e' k' env'
+    | Read (typ), cont -> to_form key typ env cont
+    | e, k -> let (e', k', env') = step e k env in run_server key e' k' env'
 
 
 let eval (e : exp) : exp = let _ = type_of e in run e empty_context (Env (Env.empty))
-
-
-(* TODO : Sanity check on port *)
-
 
 let rec split (str : string) (sep : Char.t) : string list =
   let open String in
@@ -319,61 +283,97 @@ let rec split (str : string) (sep : Char.t) : string list =
         in (sub str 0 i) :: split (sub str (i+1) ((length str) - (i+1))) sep
     with Not_found -> [str]
 
-(* open Core.Std *)
-(* open Async.Std *)
+
+let body_to_assoclst (body : string) : (string * string) list =
+  let varlst = split body '&' in
+  List.map (fun el -> let l = split el '=' in List.hd l, List.hd (List.tl l)) varlst
+
+type post_form = {
+                   env_str   : string;
+                   env_sign  : string;
+                   cont_str  : string;
+                   cont_sign : string;
+                   type_str  : string;
+                   type_sign : string;
+                   param     : string;
+                 }
+
+
+exception Parse_error of string
+
+let parse_body (body : string) : post_form =
+  let open List in
+  let assoclst = body_to_assoclst body in
+  try
+    {
+      env_str   = assoc "env_str"   assoclst;
+      env_sign  = assoc "env_sign"  assoclst;
+      cont_str  = assoc "cont_str"  assoclst;
+      cont_sign = assoc "cont_sign" assoclst;
+      type_str  = assoc "type_str"  assoclst;
+      type_sign = assoc "type_sign" assoclst;
+      param     = assoc "param"     assoclst;
+    }
+  with _ -> raise (Parse_error "Corrupt request, missing arguments")
+
 
 module Request = Cohttp.Request
 module Server  = Cohttp_async.Server
 
 (* TODO : Refactor *)
-let handle_body (body : string) : Server.response Async.Std.Deferred.t =
-  let varlst = split body '&' in
-  print_endline body; print_endline (string_of_int (List.length varlst));
-  if List.length varlst <> 3 
-  then Server.respond_with_string "Corrupt request" ~code: `Bad_request
-  else
-    begin
-      let assoclst = List.map (fun el -> let l = split el '=' in List.hd l, List.hd (List.tl l)) varlst
-      in (* try *)
-           let env, con = Marshal.from_string (hexstring_to_bytes (List.assoc "env" assoclst)) 0,
-                          Marshal.from_string (hexstring_to_bytes (List.assoc "con" assoclst)) 0
-           in (match M_util.parse (List.assoc "param" assoclst) with
-                 | M_util.Exp e -> 
-                     (* TODO : MAybe check for exceptions *)
-                     Server.respond_with_string (run_server e con env) ~code: `OK
-                 | M_util.ParseError msg -> 
-                     Server.respond_with_string ("Error: " ^ msg) ~code: `Bad_request)
+let handle_body (key : Cryptokit.RSA.key) (body : string) : Server.response Async.Std.Deferred.t =
+  try
+    let b = parse_body body
+    in if not (sign_match key (to_native b.env_sign) b.env_str)   ||
+          not (sign_match key (to_native b.cont_sign) b.cont_str) ||
+          not (sign_match key (to_native b.type_sign) b.type_str)
+       then Server.respond_with_string "Tampered Request" ~code: `Bad_request
+       else let env = Marshal.from_string (to_native b.env_str)  0 in
+            let con = Marshal.from_string (to_native b.cont_str) 0 in
+            let typ = Marshal.from_string (to_native b.type_str) 0 in
+            (match M_util.parse b.param with
 
-         (* with _ -> Server.respond_with_string "Corrup request" ~code: `Bad_request *)
-    end
+              | M_util.Exp v when (is_value v) && ((type_of v) = typ)-> 
+                  (try
+                     let resp = run_server key v con env in
+                     Server.respond_with_string resp ~code: `OK
+                   with _ -> Server.respond_with_string "Internal error" ~code: `Bad_request)
+
+              | M_util.ParseError msg -> 
+                  Server.respond_with_string ("Error: " ^ msg) ~code: `Bad_request
+
+              | _ -> Server.respond_with_string "Error: Invalid input" ~code: `Bad_request)
+
+  with _ -> Server.respond_with_string "Corrupt request" ~code: `Bad_request
 
 
 open Async.Std
 (* This shouldn't be necessary, but let's you handle lots of data:
- 
    http://en.wikipedia.org/wiki/Chunked_transfer_encoding *)
 let cat_chunks (body : string Pipe.Reader.t) : string Deferred.t =
   Pipe.fold body ~init:"" ~f:(fun x y -> Deferred.return (x ^ y))
 
 
-let handle_client (e : M_syntax.exp)
+let handle_client (key : Cryptokit.RSA.key)
+                  (e : M_syntax.exp)
                   ~(body : string Pipe.Reader.t option)
                   (client_addr : Socket.Address.Inet.t)
                   (request : Request.t) : Server.response Deferred.t =
   let open Request in match request.meth with
-    | `GET -> Server.respond_with_string (run_server e empty_context (Env (Env.empty))) ~code: `OK
+    | `GET -> Server.respond_with_string (run_server key e empty_context (Env (Env.empty))) ~code: `OK
     | `POST -> (match body with
         | None -> Server.respond_with_string "missing body" ~code: `Bad_request
-        | Some body -> cat_chunks body >>= handle_body)
+        | Some body -> cat_chunks body >>= (handle_body key))
     | _ -> Server.respond_with_string "" ~code: `Bad_request
 
     
 
-let run (port : int) (e : M_syntax.exp) = 
-  Server.create (Tcp.on_port port) (handle_client e)
+let run (key : Cryptokit.RSA.key) (port : int) (e : M_syntax.exp) = 
+  Server.create (Tcp.on_port port) (handle_client key e)
 
 
-(*
+
+(* TODO : Make this non-blocking
 let rec repl () = 
   print_string "> ";
   (match M_util.parse (read_line ()) with
@@ -386,12 +386,12 @@ let rec repl () =
   repl ()
 *)
 
-
 let usage = "cs691f run Server [ repl | FILENAME | PORT FILENAME ]"
+
 
 let _ =  
   match Array.to_list Sys.argv with
-  (*  | [ exe; "repl" ] -> print_string "Press Ctrl + C to quit.\n"; repl () *)
+    (* | [ exe; "repl" ] -> print_string "Press Ctrl + C to quit.\n"; repl () *)
     
     (* parse from file specified on command line *)
     | [ exe; f] -> (match (M_util.parse_from_file f) with
@@ -405,8 +405,10 @@ let _ =
         | M_util.ParseError msg -> print_endline msg
 
         | M_util.Exp e -> 
-              let _ = run (int_of_string port) e in
-              Core.Std.never_returns (Scheduler.go ()))
+            let key = Cryptokit.RSA.new_key 1024 in
+            let _ = run key (int_of_string port) e in
+            print_endline ("Serving " ^ f ^ " on port " ^ port);
+            Core.Std.never_returns (Scheduler.go ()))
 
     | _ -> print_endline usage
 

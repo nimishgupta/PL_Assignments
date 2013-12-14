@@ -1,2 +1,2 @@
-true : package(core), package(async), package(cohttp), package(cohttp.async)
+true : package(core), package(async), package(cohttp), package(cohttp.async), package(cryptokit)
 true: thread
