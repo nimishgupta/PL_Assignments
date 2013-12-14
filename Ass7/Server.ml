@@ -301,6 +301,9 @@ type post_form = {
 
 exception Parse_error of string
 
+let replace_char (whatc : Char.t) (withc : Char.t) (ins : string) : string =
+  String.iteri (fun i c -> if c = whatc then ins.[i] <- withc) ins; ins
+
 let parse_body (body : string) : post_form =
   let open List in
   let assoclst = body_to_assoclst body in
@@ -312,7 +315,7 @@ let parse_body (body : string) : post_form =
       cont_sign = assoc "cont_sign" assoclst;
       type_str  = assoc "type_str"  assoclst;
       type_sign = assoc "type_sign" assoclst;
-      param     = assoc "param"     assoclst;
+      param     = String.trim (replace_char '+' ' ' (assoc "param" assoclst));
     }
   with _ -> raise (Parse_error "Corrupt request, missing arguments")
 
@@ -399,15 +402,19 @@ let _ =
             let v = eval exp in
             let _ = eval (Write v) in ()
 
-        | M_util.ParseError msg -> print_endline msg)
+        | M_util.ParseError msg -> Format.printf "Error: %s\n%!" msg)
 
     | [ exe; port; f] -> (match (M_util.parse_from_file f) with
-        | M_util.ParseError msg -> print_endline msg
+        | M_util.ParseError msg -> Format.printf "File parse error: %s\n%!" msg
 
         | M_util.Exp e -> 
-            let key = Cryptokit.RSA.new_key 1024 in
+            Format.printf "Generating session key ...\n%!";
+            let prng = Cryptokit.Random.pseudo_rng 
+                        (Cryptokit.Random.string Cryptokit.Random.secure_rng 160) in
+            let key = Cryptokit.RSA.new_key ~rng:prng ~e:65537 1024 in
+            Format.printf "Session key generation done.\n%!";
             let _ = run key (int_of_string port) e in
-            print_endline ("Serving " ^ f ^ " on port " ^ port);
+            Format.printf "Serving %s on port %s\n%!" f port;
             Core.Std.never_returns (Scheduler.go ()))
 
     | _ -> print_endline usage
