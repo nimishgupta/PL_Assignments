@@ -301,8 +301,15 @@ type post_form = {
 
 exception Parse_error of string
 
+
 let replace_char (whatc : Char.t) (withc : Char.t) (ins : string) : string =
   String.iteri (fun i c -> if c = whatc then ins.[i] <- withc) ins; ins
+
+
+let value_of (q : Uri.t) (key : string) : string = 
+  match Uri.get_query_param q key with
+    | Some s -> s
+    | None -> ""
 
 let parse_body (body : string) : post_form =
   let open List in
@@ -315,7 +322,7 @@ let parse_body (body : string) : post_form =
       cont_sign = assoc "cont_sign" assoclst;
       type_str  = assoc "type_str"  assoclst;
       type_sign = assoc "type_sign" assoclst;
-      param     = String.trim (replace_char '+' ' ' (assoc "param" assoclst));
+      param     = String.trim (replace_char '+' ' ' (Uri.pct_decode (assoc "param" assoclst)));
     }
   with _ -> raise (Parse_error "Corrupt request, missing arguments")
 
@@ -327,6 +334,7 @@ module Server  = Cohttp_async.Server
 let handle_body (key : Cryptokit.RSA.key) (body : string) : Server.response Async.Std.Deferred.t =
   try
     let b = parse_body body
+
     in if not (sign_match key (to_native b.env_sign) b.env_str)   ||
           not (sign_match key (to_native b.cont_sign) b.cont_str) ||
           not (sign_match key (to_native b.type_sign) b.type_str)
@@ -366,7 +374,7 @@ let handle_client (key : Cryptokit.RSA.key)
     | `GET -> Server.respond_with_string (run_server key e empty_context (Env (Env.empty))) ~code: `OK
     | `POST -> (match body with
         | None -> Server.respond_with_string "missing body" ~code: `Bad_request
-        | Some body -> cat_chunks body >>= (handle_body key))
+        | Some body -> cat_chunks body  >>= (handle_body key))
     | _ -> Server.respond_with_string "" ~code: `Bad_request
 
     

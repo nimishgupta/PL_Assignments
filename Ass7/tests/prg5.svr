@@ -1,0 +1,6 @@
+let length = fix (self : int list -> int) ->
+               fun (lst : int list) ->
+                 if empty? lst then 0
+                 else 1 + self (tail lst)
+in write (length read<int list>)
+

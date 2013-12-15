@@ -1,0 +1,2 @@
+let x = read <int * int * int>
+in write (x.0 :: x.1 :: x.2 :: empty<int>)
