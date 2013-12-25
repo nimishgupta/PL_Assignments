@@ -251,7 +251,8 @@ let rec repl () =
   match M_util.parse (read_line ()) with
     | M_util.Exp exp -> 
         let v = eval exp in
-        let _ = eval (Write v) in
+        let _ = M_util.print_exp v; 
+                print_newline () in
         repl ()
 
     | M_util.ParseError msg ->
