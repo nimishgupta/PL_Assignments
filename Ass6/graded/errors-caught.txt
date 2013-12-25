@@ -1,0 +1,2 @@
+eval {{ fix (f : int -> int) -> fun (n : int) -> f 10 }} = fun (n : int) -> f 10 (expected timeout).
+eval {{ let dummy = fix (f : int -> int) -> fun (n : int) -> f 10 in 10 }} = 10 (expected timeout).
