@@ -31,15 +31,19 @@ Inductive tbinop: type -> type -> type -> Set :=
 Definition make_pair targ1 targ2 (l : targ1) (r : targ2): (targ1 * targ2) :=
   (l, r)%type.
 
+
+(* Maybe typeDenote is causing a problem *)
 (* Need to define recursive define for pairs *)
-Definition eqp t1 t2 (p1 p2: t1 * t2) : bool :=
+Definition eqp (t1 t2: type) (p1 p2: typeDenote (Pair t1 t2)) : bool :=
   let (a1, b1) := p1 in
   let (a2, b2) := p2 in
   (* (TEq _ a1 a2) andb (TEq _ b1 b2) *)
-  false
-%type.
+  false.
 
-(* Print eqp. *)
+Eval simpl in typeDenote (Pair Nat Bool).
+Print eqp.
+
+Eval simpl in eqp Nat Bool (3, false) (4, true). 
 
 (* Check typeDenote (Pair _ _). *)
 
@@ -53,8 +57,8 @@ Definition tbinopDenote targ1 targ2 tres (b: tbinop targ1 targ2 tres)
     | TEq Nat   => beq_nat
     | TEq Bool  => eqb
     | TLt       => leb
-    | TEq ((* Should we have a forall clause *) Pair t1 t2)  => 
-        eqp
+    (* | TEq ((* Should we have a forall clause *) Pair t1 t2)  => eqp *)
+    | TEq (Pair t1 t2)  => eqp t1 t2
     (* Check if make_pair has to be a dependent type *)
     | TMakePair _ _ => make_pair
   end.
