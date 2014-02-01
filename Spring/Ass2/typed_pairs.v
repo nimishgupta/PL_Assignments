@@ -1,4 +1,4 @@
-Require Import Arith Bool List.
+Require Import Arith Bool List CpdtTactics.
 Set Implicit Arguments.
 
 Inductive type : Set :=
@@ -67,27 +67,27 @@ Inductive tpairop: type -> type -> Set :=
   | ProjL: forall t1 t2, tpairop (Pair t1 t2) t1
   | ProjR: forall t1 t2, tpairop (Pair t1 t2) t2.
 
-
-(* typed expression in our language *)
-Inductive texp : type -> Set :=
-  | TNConst: nat -> texp Nat
-  | TBConst: bool -> texp Bool
-  | TBinop: forall t1 t2 t, tbinop t1 t2 t -> texp t1 -> texp t2 -> texp t
-  | TPairop: forall t1 t2, tpairop t1 t2 -> texp t1 -> texp t2.
-
-
 Definition projL {a b: Type} (p : a*b) : a :=
   let (l, _) := p in l.
 
 Definition projR {a b: Type} (p : a*b) : b :=
   let (_, r) := p in r.
 
-Definition tpairopDenote targ1 tres (op : tpairop targ1 tres)
- : typeDenote targ1 -> typeDenote tres :=
+Definition tpairopDenote tpair tres (op : tpairop tpair tres)
+ : typeDenote tpair -> typeDenote tres :=
   match op with
     | ProjL _ _ => projL
     | ProjR _ _ => projR
   end.
+
+
+(* typed expression in our language *)
+Inductive texp : type -> Set :=
+  | TNConst: nat -> texp Nat
+  | TBConst: bool -> texp Bool
+  | TBinop: forall t1 t2 t, tbinop t1 t2 t -> texp t1 -> texp t2 -> texp t
+  | TPairop: forall tpair t, tpairop tpair t -> texp tpair -> texp t.
+
 
 Fixpoint texpDenote t (e: texp t): typeDenote t :=
   match e with
@@ -136,9 +136,10 @@ Definition tstack := list type.
 Inductive tinstr: tstack -> tstack -> Set :=
   | TiNConst : forall s, nat -> tinstr s (Nat :: s)
   | TiBConst : forall s, bool -> tinstr s (Bool :: s)
-  | TiBinop : forall arg1 arg2 res s, 
-                tbinop arg1 arg2 res -> tinstr (arg1 :: arg2 :: s) (res :: s).
-  (* TODO : See if tiPairop would come *)
+  | TiBinop  : forall arg1 arg2 res s, 
+                tbinop arg1 arg2 res -> tinstr (arg1 :: arg2 :: s) (res :: s)
+  | TiPairop : forall tpair tres s,
+                tpairop tpair tres -> tinstr (tpair :: s) (tres :: s).
 
 Inductive tprog: tstack -> tstack -> Set :=
   | TNil: forall s, tprog s s
@@ -152,13 +153,15 @@ Fixpoint vstack (ts: tstack): Set :=
 
 
 Definition tinstrDenote ts ts' (i: tinstr ts ts'): vstack ts -> vstack ts' :=
-  match i with
+  match i in tinstr ts ts' return vstack ts -> vstack ts' with
     | TiNConst _ n => fun s => (n, s)
     | TiBConst _ b => fun s => (b, s)
-    | TiBinop _ _ _ _ b => fun s =>
-                             let '(arg1, (arg2, s')) := s in
-                             ((tbinopDenote b) arg1 arg2, s')
-    (* TODO : See if pairop would come *)
+    | TiBinop _ _ _ _ op => fun s =>
+                              let '(arg1, (arg2, s')) := s in
+                              ((tbinopDenote op) arg1 arg2, s')
+    | TiPairop _ _ _ op => fun s =>
+                             let '(arg, s') := s in
+                               ((tpairopDenote op) arg, s')
   end.
 
 
@@ -181,5 +184,82 @@ Fixpoint tcompile t (e: texp t) (ts: tstack): tprog ts (t::ts) :=
     | TBConst b => TCons (TiBConst _ b) (TNil _)
     | TBinop _ _ _ b e1 e2 => tconcat (tcompile e2 _) 
                                       (tconcat (tcompile e1 _) (TCons (TiBinop _ b) (TNil _)))
-    (* TODO : See if pairop would come *)
+    | TPairop _ _ op e' => tconcat (tcompile e' _)
+                                   (TCons (TiPairop _ op) (TNil _))
   end.
+
+
+
+Print tcompile.
+
+Eval simpl in tprogDenote (tcompile (TNConst 42) nil) tt.
+Eval simpl in tprogDenote (tcompile (TBConst true) nil) tt.
+Eval simpl in tprogDenote (tcompile (TBinop TTimes 
+                                        (TBinop TPlus (TNConst 2) (TNConst 2))
+                                        (TNConst 7)) nil) tt.
+Eval simpl in tprogDenote (tcompile (TBinop (TEq Nat) 
+                                        (TBinop TPlus 
+                                            (TNConst 2)
+                                            (TNConst 2))
+                                        (TNConst 7)) nil) tt.
+Eval simpl in tprogDenote (tcompile (TBinop TLt 
+                                        (TBinop TPlus
+                                            (TNConst 2)
+                                            (TNConst 2))
+                                        (TNConst 7)) nil) tt. 
+
+Eval simpl in tprogDenote (tcompile (TBinop TTimes 
+                                        (TPairop (ProjL Nat Nat) 
+                                                 (TBinop (TMakePair Nat Nat)
+                                                     (TNConst 7)
+                                                     (TNConst 2)))
+                                        (TPairop (ProjR Nat Nat) 
+                                                 (TBinop (TMakePair Nat Nat)
+                                                     (TNConst 7)
+                                                     (TNConst 2)))) nil) tt.
+
+Eval simpl in tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
+                                        (TBinop (TMakePair (Pair Nat Bool) Bool) 
+                                            (TBinop (TMakePair Nat Bool)
+                                                (TNConst 4)
+                                                (TBConst true))
+                                            (TBConst false))
+                                        (TBinop (TMakePair (Pair Nat Bool) Bool) 
+                                            (TBinop (TMakePair Nat Bool)
+                                                (TNConst 3)
+                                                (TBConst true))
+                                            (TBConst false))) nil) tt.
+
+Eval simpl in tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
+                                        (TBinop (TMakePair (Pair Nat Bool) Bool) 
+                                            (TBinop (TMakePair Nat Bool)
+                                                (TNConst 4)
+                                                (TBConst true))
+                                            (TBConst false))
+                                        (TBinop (TMakePair (Pair Nat Bool) Bool) 
+                                            (TBinop (TMakePair Nat Bool)
+                                                (TNConst 4)
+                                                (TBConst true))
+                                            (TBConst false))) nil) tt.
+
+
+(* Translation Correctness *)
+Lemma tconcat_correct: forall ts ts' ts'' (p: tprog ts ts') (p' : tprog ts' ts'') (s: vstack ts),
+                         tprogDenote (tconcat p p') s = tprogDenote p' (tprogDenote p s).
+induction p; crush.
+Qed.
+
+Hint Rewrite tconcat_correct.
+
+Lemma tcompile_correct': forall t (e: texp t) ts (s: vstack ts),
+                           tprogDenote (tcompile e ts) s = (texpDenote e, s).
+
+induction e; crush.
+Qed.
+
+Hint Rewrite tcompile_correct'.
+
+Theorem tcompile_correct: forall t (e: texp t),
+                             tprogDenote (tcompile e nil) tt = (texpDenote e, tt).
+crush.
+Qed.
