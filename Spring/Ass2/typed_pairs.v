@@ -28,32 +28,11 @@ Inductive tbinop: type -> type -> type -> Set :=
   | TLt: tbinop Nat Nat Bool
   | TMakePair: forall t1 t2, tbinop t1 t2 (Pair t1 t2).
 
-Definition make_pair targ1 targ2 (l : targ1) (r : targ2): (targ1 * targ2) :=
-  (l, r)%type.
-
-
-(* Maybe typeDenote is causing a problem *)
-(* Need to define recursive define for pairs *)
-Section equality.
-Variables A B: Type.
-Definition eqp (p1 p2: A * B) : bool :=
-  let (a1, b1) := p1 in
-  let (a2, b2) := p2 in
-  (* (TEq _ a1 a2) andb (TEq _ b1 b2) *)
-  false.
-
-Eval simpl in typeDenote (Pair Nat Bool).
-Check eqp.
-Check pair.
-(* Check eqp (3, false) (4, true). *)
-(* Eval simpl in eqp (3, false) (4, true). *) 
-
-(* Check typeDenote (Pair _ _). *)
-
 Definition beq_pair {a b : Type} (eqA : a -> a -> bool) (eqB : b -> b -> bool) (x y: a*b) : bool
     := let (xa, xb) := x in let (ya, yb) := y in eqA xa ya && eqB xb yb.
 
 
+(* Need to make this function go away *)
 Fixpoint my_lt (m n: nat) : bool :=
   match m, n with
     | O, O => true
@@ -62,21 +41,41 @@ Fixpoint my_lt (m n: nat) : bool :=
     | S m', S n' => my_lt m' n'
   end.
 
-Fixpoint tbinopDenote targ1 targ2 tres (b: tbinop targ1 targ2 tres)
+
+Fixpoint type_comparator (t: type) : typeDenote t -> typeDenote t -> bool :=
+  match t with
+    | Nat => beq_nat
+    | Bool => eqb
+    | Pair t1 t2 => beq_pair (type_comparator t1) (type_comparator t2)
+  end.
+
+Definition tbinopDenote targ1 targ2 tres (b: tbinop targ1 targ2 tres)
   : typeDenote targ1 -> typeDenote targ2 -> typeDenote tres :=
   match b in tbinop targ1 targ2 tres 
     return typeDenote targ1 -> typeDenote targ2 -> typeDenote tres with
-    (* Wrappers? *)
-    | TPlus     => plus
-    | TTimes    => mult
-    | TEq Nat   => beq_nat
-    | TEq Bool  => eqb
-    | TEq (Pair t1 t2)  => beq_pair (tbinopDenote (TEq t1)) (tbinopDenote (TEq t2))
-    | TMakePair _ _ => make_pair
-    | TLt       => (* leb *) my_lt
+    | TPlus  => plus
+    | TTimes => mult
+    | TEq t => type_comparator t
+    | TLt    => (* leb *) my_lt
+    | TMakePair _ _ => pair
   end.
 
 
+
+
+Fixpoint tbinopDenote targ1 targ2 tres (b: tbinop targ1 targ2 tres)
+  : typeDenote targ1 -> typeDenote targ2 -> typeDenote tres :=
+  match b in tbinop targ1 targ2 tres
+    return typeDenote targ1 -> typeDenote targ2 -> typeDenote tres with
+    | TPlus  => plus
+    | TTimes => mult
+    | TEq Nat => beq_nat
+    | TEq Bool => eqb
+    (* XXX : coq not convinced that we are disintegrating into smaller arguments *)
+    | TEq (Pair t1 t2) => beq_pair (tbinopDenote (TEq t1)) (tbinopDenote (TEq t2))
+    | TLt    => (* leb *) my_lt
+    | TMakePair _ _ => pair
+  end.
 
 
 (********************************************************************************************)
