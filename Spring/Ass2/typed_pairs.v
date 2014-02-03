@@ -4,8 +4,6 @@ Set Implicit Arguments.
 Inductive type : Set :=
   | Nat
   | Bool
-  (* Accept two type from { Nat, Bool, Pair } and give a new type *)
-  (* What is the new type *)
   | Pair: type -> type -> type.
 
 
@@ -13,9 +11,6 @@ Fixpoint typeDenote (t: type): Set :=
   match t with
     | Nat  => nat
     | Bool => bool
-  (* XXX : need to check if this is correct *)
-    (* | Pair t1 t2 => (typeDenote t1) * (typeDenote t2) *)
-    (* ((typeDenote t1), (typeDenote t2)) <> ((typeDenote t1) * (typeDenote t2)) *)
     | Pair t1 t2 => (typeDenote t1) * (typeDenote t2)
   (* %type asks coq parser to parse "*" term as a type instead of product *)
   end%type.
@@ -97,6 +92,7 @@ Fixpoint texpDenote t (e: texp t): typeDenote t :=
     | TPairop _ _ op e' => (tpairopDenote op) (texpDenote e')
   end.
 
+(* Few Tests *)
 Eval simpl in texpDenote (TNConst 42).
 Eval simpl in texpDenote (TBConst true).
 Eval simpl in texpDenote (TBinop (TMakePair Nat Bool) (TNConst 42) (TBConst true)).
@@ -130,7 +126,7 @@ Eval simpl in texpDenote (TBinop TLt (TBinop TPlus (TNConst 2)(TNConst 2)) (TNCo
 
 Definition tstack := list type.
 
-(* instruction is types in the sense that it tells us the type of stack that it expects
+(* instruction is typed in the sense that it tells us the type of stack that it expects
    and type of stacks that it will produce
  *)
 Inductive tinstr: tstack -> tstack -> Set :=
@@ -189,9 +185,7 @@ Fixpoint tcompile t (e: texp t) (ts: tstack): tprog ts (t::ts) :=
   end.
 
 
-
-Print tcompile.
-
+(* Tests *)
 Eval simpl in tprogDenote (tcompile (TNConst 42) nil) tt.
 Eval simpl in tprogDenote (tcompile (TBConst true) nil) tt.
 Eval simpl in tprogDenote (tcompile (TBinop TTimes 
