@@ -30,11 +30,21 @@ Definition beq_pair {a b : Type} (eqA : a -> a -> bool) (eqB : b -> b -> bool) (
 (* TODO : Need to make this function go away *)
 Fixpoint my_lt (m n: nat) : bool :=
   match m, n with
-    | O, O => true
-    | O, _ => false
+    | O, O => false
+    | O, _ => true
     | _, O => false
     | S m', S n' => my_lt m' n'
   end.
+
+(* Tests *)
+Example my_lt_test1: my_lt 1 1 = false.
+Proof. reflexivity. Qed.
+
+Example my_lt_test2: my_lt 1 2 = true.
+Proof. reflexivity. Qed.
+
+Example my_lt_test3: my_lt 1 0 = false.
+Proof. reflexivity. Qed.
 
 
 Fixpoint type_comparator (t: type) : typeDenote t -> typeDenote t -> bool :=
@@ -93,33 +103,60 @@ Fixpoint texpDenote t (e: texp t): typeDenote t :=
   end.
 
 (* Few Tests *)
-Eval simpl in texpDenote (TNConst 42).
-Eval simpl in texpDenote (TBConst true).
-Eval simpl in texpDenote (TBinop (TMakePair Nat Bool) (TNConst 42) (TBConst true)).
-Eval simpl in texpDenote (TBinop TTimes (TBinop TPlus (TNConst 2) (TNConst 2)) (TNConst 7)).
-Eval simpl in texpDenote (TBinop TTimes 
+Example test_exp1: texpDenote (TNConst 42) = 42.
+Proof. reflexivity. Qed.
+
+Example test_exp2: texpDenote (TBConst true) = true.
+Proof. reflexivity. Qed.
+
+Example test_exp3: texpDenote (TBinop (TMakePair Nat Bool) (TNConst 42) (TBConst true)) = (42, true).
+Proof. reflexivity. Qed.
+
+Example test_exp4: texpDenote (TBinop TTimes (TBinop TPlus (TNConst 2) (TNConst 2)) (TNConst 7)) = 28.
+Proof. reflexivity. Qed.
+
+Example test_exp5: texpDenote (TBinop TTimes 
                                    (TPairop (ProjL Nat Nat) 
                                      (TBinop (TMakePair Nat Nat) (TNConst 7) (TNConst 2)))
                                    (TPairop (ProjR Nat Nat) 
-                                     (TBinop (TMakePair Nat Nat) (TNConst 7) (TNConst 2)))).
-Eval simpl in texpDenote (TBinop (TEq Nat) (TBinop TPlus (TNConst 2) (TNConst 2)) (TNConst 7)).
-Eval simpl in texpDenote (TBinop (TEq Nat) (TNConst 8) (TBinop TTimes (TNConst 4) (TNConst 2))).
-Eval simpl in texpDenote (TBinop (TEq (Pair (Pair Nat Bool) Bool))
+                                     (TBinop (TMakePair Nat Nat) (TNConst 7) (TNConst 2)))) = 14.
+Proof. reflexivity. Qed.
+
+Example test_exp6: texpDenote (TBinop (TEq Nat) 
+                                  (TBinop TPlus 
+                                      (TNConst 2)
+                                      (TNConst 2))
+                                  (TNConst 7)) = false.
+Proof. reflexivity. Qed.
+
+Example test_exp7: texpDenote (TBinop (TEq Nat)
+                                  (TNConst 8) 
+                                  (TBinop TTimes
+                                      (TNConst 4)
+                                      (TNConst 2))) = true.
+Proof. reflexivity. Qed.
+
+Example test_exp8: texpDenote (TBinop (TEq (Pair (Pair Nat Bool) Bool))
                                     (TBinop (TMakePair (Pair Nat Bool) Bool) 
                                                   (TBinop (TMakePair Nat Bool) (TNConst 4) (TBConst true))
                                                   (TBConst false))
                                     (TBinop (TMakePair (Pair Nat Bool) Bool) 
                                                   (TBinop (TMakePair Nat Bool) (TNConst 3) (TBConst true))
-                                                  (TBConst false))).
+                                                  (TBConst false))) = false.
+Proof. reflexivity. Qed.
 
-Eval simpl in texpDenote (TBinop (TEq (Pair (Pair Nat Bool) Bool))
+Example test_exp9: texpDenote (TBinop (TEq (Pair (Pair Nat Bool) Bool))
                                     (TBinop (TMakePair (Pair Nat Bool) Bool) 
                                                   (TBinop (TMakePair Nat Bool) (TNConst 4) (TBConst true))
                                                   (TBConst false))
                                     (TBinop (TMakePair (Pair Nat Bool) Bool) 
                                                   (TBinop (TMakePair Nat Bool) (TNConst 4) (TBConst true))
-                                                  (TBConst false))).
-Eval simpl in texpDenote (TBinop TLt (TBinop TPlus (TNConst 2)(TNConst 2)) (TNConst 7)).
+                                                  (TBConst false))) = true.
+Proof. reflexivity. Qed.
+
+
+Example test_exp10: texpDenote (TBinop TLt (TBinop TPlus (TNConst 2)(TNConst 2)) (TNConst 7)) = true.
+Proof. reflexivity. Qed.
 
 
 (* Compiler for stack machine *)
@@ -186,23 +223,32 @@ Fixpoint tcompile t (e: texp t) (ts: tstack): tprog ts (t::ts) :=
 
 
 (* Tests *)
-Eval simpl in tprogDenote (tcompile (TNConst 42) nil) tt.
-Eval simpl in tprogDenote (tcompile (TBConst true) nil) tt.
-Eval simpl in tprogDenote (tcompile (TBinop TTimes 
+Example test_prog1: tprogDenote (tcompile (TNConst 42) nil) tt = (42, tt).
+Proof. reflexivity. Qed.
+
+Example test_prog2: tprogDenote (tcompile (TBConst true) nil) tt = (true, tt).
+Proof. reflexivity. Qed.
+
+Example test_prog3: tprogDenote (tcompile (TBinop TTimes 
                                         (TBinop TPlus (TNConst 2) (TNConst 2))
-                                        (TNConst 7)) nil) tt.
-Eval simpl in tprogDenote (tcompile (TBinop (TEq Nat) 
+                                        (TNConst 7)) nil) tt = (28, tt).
+Proof. reflexivity. Qed.
+
+Example test_prog4: tprogDenote (tcompile (TBinop (TEq Nat) 
                                         (TBinop TPlus 
                                             (TNConst 2)
                                             (TNConst 2))
-                                        (TNConst 7)) nil) tt.
-Eval simpl in tprogDenote (tcompile (TBinop TLt 
+                                        (TNConst 7)) nil) tt = (false, tt).
+Proof. reflexivity. Qed.
+
+Example test_prog5: tprogDenote (tcompile (TBinop TLt 
                                         (TBinop TPlus
                                             (TNConst 2)
                                             (TNConst 2))
-                                        (TNConst 7)) nil) tt. 
+                                        (TNConst 7)) nil) tt = (true, tt).  
+Proof. reflexivity. Qed.
 
-Eval simpl in tprogDenote (tcompile (TBinop TTimes 
+Example test_prog6: tprogDenote (tcompile (TBinop TTimes 
                                         (TPairop (ProjL Nat Nat) 
                                                  (TBinop (TMakePair Nat Nat)
                                                      (TNConst 7)
@@ -210,9 +256,10 @@ Eval simpl in tprogDenote (tcompile (TBinop TTimes
                                         (TPairop (ProjR Nat Nat) 
                                                  (TBinop (TMakePair Nat Nat)
                                                      (TNConst 7)
-                                                     (TNConst 2)))) nil) tt.
+                                                     (TNConst 2)))) nil) tt = (14, tt).
+Proof. reflexivity. Qed.
 
-Eval simpl in tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
+Example test_prog7: tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
                                         (TBinop (TMakePair (Pair Nat Bool) Bool) 
                                             (TBinop (TMakePair Nat Bool)
                                                 (TNConst 4)
@@ -222,9 +269,10 @@ Eval simpl in tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
                                             (TBinop (TMakePair Nat Bool)
                                                 (TNConst 3)
                                                 (TBConst true))
-                                            (TBConst false))) nil) tt.
+                                            (TBConst false))) nil) tt = (false, tt).
+Proof. reflexivity. Qed.
 
-Eval simpl in tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
+Example test_prog8: tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
                                         (TBinop (TMakePair (Pair Nat Bool) Bool) 
                                             (TBinop (TMakePair Nat Bool)
                                                 (TNConst 4)
@@ -234,7 +282,8 @@ Eval simpl in tprogDenote (tcompile (TBinop (TEq (Pair (Pair Nat Bool) Bool))
                                             (TBinop (TMakePair Nat Bool)
                                                 (TNConst 4)
                                                 (TBConst true))
-                                            (TBConst false))) nil) tt.
+                                            (TBConst false))) nil) tt = (true, tt).
+Proof. reflexivity. Qed.
 
 
 (* Translation Correctness *)
