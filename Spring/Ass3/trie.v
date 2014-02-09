@@ -1,43 +1,74 @@
 (* Implement a (binary) trie *)
-Require Import Bool.
+Require Import Bool List.
 Set Implicit Arguments.
 
-(* XXX: Should consider defining this as list of bools *)
-Inductive bits: Set :=
-  | Emptybits
-  | Bit : bool -> bits -> bits.
+Section Tries.
 
-Inductive trie (A: Set): Set :=
-  | Leaf: trie A
-  | Node: trie A -> (* bits -> *) option A -> trie A -> trie A.
+Variable A: Set.
+
+Definition bitstring: Set := list bool.
+
+Inductive trie: Set :=
+  | Leaf: trie
+  | Node: trie -> bitstring ->  option A -> trie -> trie.
 
 
-
-Fixpoint search {A: Set} (in_trie: trie A) (key: bits) : option A :=
-  match key, in_trie with
-    | Emptybits, Node _ val _ => val
-    | _, Leaf => None
-    | Bit true  bits', Node _ _ rtrie => search rtrie bits' 
-    | Bit false bits', Node ltrie _ _ => search ltrie bits'
+Fixpoint prefix_match (key1 key2: bitstring): bitstring * bitstring :=
+  match key1, key2 with
+    | k :: key1', (k' :: key2') => 
+        if eqb k k' then prefix_match key1' key2'
+        else (key1, key2) 
+    | _, _ => (key1, key2)
   end.
 
-Check search.
+Fixpoint search (bits: bitstring) (in_trie: trie): option A :=
+  match in_trie with
+    | Leaf => None
+    | Node ltrie k v rtrie => 
+        let (left1, left2) := prefix_match k bits in 
+        match left1, left2 with
+          | nil, nil => v (* perfect match *)
+          | nil, b :: bits' => search bits' (if b then rtrie else ltrie) (* exausted trie key *)
+          | _, _ => None (* Does not match any further *)
+       end
+  end.
 
-(* case "Replace"
-   case "Add"
-     case "Fill in missing nodes"
+(*
+let rec insert (bits : bool list) (v : 'a) (in_trie : 'a trie) : 'a trie =
+  match in_trie with
+    | Leaf -> Node (Leaf, bits, Some v, Leaf)
+    | Node (ltrie, key, v', rtrie) -> (match prefix_match key bits with
+        | [], [] -> Node (ltrie, key, Some v, rtrie) (*Found, replace val *)
+        | [], true  :: bits' -> Node (ltrie, key, v', (insert bits' v rtrie))
+        | [], false :: bits' -> Node ((insert bits' v ltrie), key, v', rtrie)
+        | _ :: key', true  :: bits' ->
+            let ltrie' = Node (ltrie, key', v', rtrie) in
+            Node (ltrie', [], None, Node (Leaf, bits', Some v, Leaf))
+        | _ :: key', false :: bits' ->
+            let rtrie' = Node (ltrie, key', v', rtrie) in
+            Node (Node (Leaf, bits', Some v, Leaf), [], None, rtrie')
+        | _ :: key', [] -> Node (ltrie, key, Some v, rtrie))
 *)
 
-Fixpoint insert {A: Set} (val: A) (in_trie: trie A) (key: bits) : trie A :=
-  match key, in_trie with
-    | Emptybits, Node ltrie _ rtrie => Node ltrie (Some val) rtrie
-    | Emptybits, Leaf  => Node Leaf (Some val) Leaf
-    | Bit true bits', Node ltrie v rtrie => Node ltrie v (insert _ val rtrie bits') 
-    | Bit true bits', Leaf => Node Leaf None (insert _ val Leaf bits')
-    | Bit false bits', Node ltrie v rtrie => Node (insert _ val ltrie bits') v rtrie
-    | Bit false bits', Leaf => Node _ (insert val Leaf bits') None Leaf
+(* Definition empty_trie {A: Set}: trie A := Leaf. *)
+
+
+Fixpoint insert (bits: bitstring) (v: A) (in_trie: trie): trie :=
+  match in_trie with
+    | Leaf => Node Leaf bits (Some v) Leaf
+    | Node ltrie key v' rtrie => let (left1, left2) := prefix_match key bits in
+        match left1, left2 with
+          | nil, nil => Node ltrie key (Some v) rtrie (* Found, replace val *)
+          | nil, true :: bits' => Node ltrie key v' (insert bits' v rtrie)
+          | nil, false :: bits' => Node (insert bits' v ltrie) key v' rtrie
+          | _ :: key', true :: bits' =>
+              let ltrie' := Node ltrie key' v' rtrie in
+              Node ltrie' nil None (Node Leaf bits' (Some v) Leaf)
+          | _ :: key', false :: bits' =>
+              let rtrie' := Node ltrie key' v' rtrie in
+              Node (Node Leaf bits' (Some v) Leaf) nil None rtrie'
+          | _ :: key', nil => Node ltrie key (Some v) rtrie
+        end
   end.
 
-
-  
-  
+End Tries.
