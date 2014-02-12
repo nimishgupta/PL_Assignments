@@ -13,17 +13,6 @@ Inductive trie: Set :=
   | Node: trie -> bitstring ->  option A -> trie -> trie.
 
 
-(* Redundant for now
-Fixpoint prefix_match (key1 key2: bitstring): bitstring * bitstring :=
-  match key1, key2 with
-    | k :: key1', (k' :: key2') => 
-        if eqb k k' then prefix_match key1' key2'
-        else (key1, key2) 
-    | _, _ => (key1, key2)
-  end.
-*)
-
-
 Fixpoint search (sk: bitstring) (t : trie): option A :=
   match t with
     | Leaf => None
@@ -37,27 +26,6 @@ Fixpoint search (sk: bitstring) (t : trie): option A :=
               else None 
         end
   end.
-
-
-(*
-Fixpoint insert (bits: bitstring) (v: A) (in_trie: trie): trie :=
-  match in_trie with
-    | Leaf => Node Leaf bits (Some v) Leaf
-    | Node ltrie key v' rtrie => let (left1, left2) := prefix_match key bits in
-        match left1, left2 with
-          | nil, nil => Node ltrie key (Some v) rtrie (* Found, replace val *)
-          | nil, true :: bits' => Node ltrie key v' (insert bits' v rtrie)
-          | nil, false :: bits' => Node (insert bits' v ltrie) key v' rtrie
-          | _ :: key', true :: bits' =>
-              let ltrie' := Node ltrie key' v' rtrie in
-              Node ltrie' nil None (Node Leaf bits' (Some v) Leaf)
-          | _ :: key', false :: bits' =>
-              let rtrie' := Node ltrie key' v' rtrie in
-              Node (Node Leaf bits' (Some v) Leaf) nil None rtrie'
-          | _ :: key', nil => Node ltrie key (Some v) rtrie
-        end
-  end.
-*)
 
 
 Fixpoint insert (ik: bitstring) (iv: A) (t : trie) : trie :=
@@ -83,44 +51,53 @@ Fixpoint insert (ik: bitstring) (iv: A) (t : trie) : trie :=
              *) 
             if eqb l m 
             then match insert ik' iv (Node lhs nk' onv rhs) with
-                   | Leaf => Leaf
                    | Node lhs' nk'' onv' rhs' => Node lhs' (l :: nk'') onv' rhs'
+                   | Leaf => (Node lhs nk' onv rhs)
                  end
             else if l
             then Node (insert ik' iv Leaf) nil None (Node lhs nk' onv rhs)
             else Node (Node lhs nk' onv rhs) nil None (insert ik' iv Leaf)
         end
    end.
-                          
+
+Hint Rewrite eqb_reflx.
 
 Lemma search_insert_top :
   forall (k: bitstring) (v: A) (lhs rhs: trie),
     search k (Node lhs k (Some v) rhs) = Some v.
 Proof.
   intro.
-  induction k.
-  + intros.
-    simpl.
-    reflexivity.
-  + intros.
-    simpl.
-    rewrite eqb_reflx.
-    auto.
+  induction k; try solve[crush].
 Qed.
 
+Hint Rewrite search_insert_top.
+
 Lemma insert_produces_node : 
-  forall (k: bitstring) (v: A) (t: trie), exists (lhs rhs: trie) (k': bitstring) (v': A),
-    insert k v t = Node lhs k' (Some v') rhs.
+  forall (k: bitstring) (v: A) (t: trie), exists (lhs rhs: trie) (k': bitstring) (v': option A),
+    insert k v t = Node lhs k' v' rhs.
 Proof.
   intros.
-  destruct k.
-  + unfold insert.
+  induction k.
+  + simpl.
     destruct t.
-Admitted.
+    - eauto.
+    - destruct b.
+      * eauto.
+      * destruct b. eauto. eauto.
+  + simpl.
+    destruct t.
+    - eauto.
+    - destruct b.
+      * destruct a.
+        exists t1. exists (insert k v t2). exists nil. exists o. auto.
+        exists (insert k v t1). exists t2. exists nil. exists o. auto.
+      * destruct (eqb b a).
+          destruct (insert k v (Node t1 b0 o t2)). eauto. eauto.
+          destruct b. eauto. eauto.
+Qed.
+
+Hint Rewrite insert_produces_node. 
  
-
-
-(* TODO *)
 Lemma search_rec :
   forall (b: bool) (k k': bitstring) (v: A) (w: option A) (t1 t2: trie),
     search (b :: k) (insert (b :: k) v (Node t1 (b :: k') w t2)) = 
@@ -131,100 +108,106 @@ Proof.
   + unfold insert at 1.
     rewrite eqb_reflx.
     destruct k'.
-    - rewrite search_insert_top.
-      unfold insert.
-      auto.
-    - destruct b0.
-      * rewrite search_insert_top.
-        unfold insert.
-        auto.
-      * rewrite search_insert_top.
-        unfold insert.
-        rewrite search_insert_top.
-        auto.
+    - crush.
+    - destruct b0; crush.
   + unfold insert at 1.
     rewrite eqb_reflx.
     fold insert.
     destruct k'.
-    - destruct a.
-      * unfold search at 1.
-        rewrite eqb_reflx.
-        fold search.
-        simpl.
-        reflexivity.
-      * unfold search at 1.
-        rewrite eqb_reflx.
-        fold search.
-        simpl.
-        reflexivity.
-    - 
-Admitted.
+    - destruct a; crush.
+    - simpl.
+      remember (eqb b0 a).
+      destruct b1.
+      * (* Check insert_produces_node. *)
+        destruct (insert_produces_node k v (Node t1 k' w t2)) as [lhs [rhs [k2 [v2 H]]]].
+        Hint Rewrite eqb_reflx.
+        crush.
+      * simpl.
+        destruct b0; try solve[crush].
+Qed.
 
-(* TODO *)
+Hint Rewrite search_rec.
+
 Lemma correct_even :
   forall (b: bool) (k k': bitstring) (v: A) (w: option A) (t1 t2: trie),
     (forall (v: A) (t: trie), search k (insert k v t) = Some v) ->
       search (b :: k) (insert (b :: k) v (Node t1 (b :: k') w t2)) = Some v.
 Proof.
   intros.
-  induction k.
-  + unfold insert.
-    rewrite eqb_reflx.
-    destruct k'.
-    - rewrite search_insert_top.
-      reflexivity.
-    - destruct b0.
-      * rewrite search_insert_top.
-        reflexivity.
-      * rewrite search_insert_top.
-        reflexivity.
-  + unfold insert.
-    rewrite eqb_reflx.
-    fold insert.
-    destruct k'.
-    - destruct a.
-      * simpl.
-        rewrite eqb_reflx.        
-              
-  
-Admitted.
+  induction k'.
+  + simpl. rewrite eqb_reflx.
+    destruct (insert_produces_node k v (Node t1 nil w t2)) as [lhs [rhs [k2 [v2 H2]]]].
+    crush.
+  + simpl. rewrite eqb_reflx.
+    destruct (insert_produces_node k v (Node t1 (a::k') w t2)) as [lhs [rhs [k2 [v2 H2]]]].
+    crush.
+Qed.
 
+Hint Rewrite correct_even. 
+    
 Lemma correct_odd:
   forall (b b': bool) (k k': bitstring) (v: A) (w: option A) (t1 t2: trie),
-    (forall (v: A) (t: trie), search k (insert k v t) = Some v) -> b <> b'
+    (forall (v: A) (t: trie), search k (insert k v t) = Some v) -> b' <> b
       -> search (b :: k) (insert (b :: k) v (Node t1 (b' :: k') w t2)) = Some v.
 Proof.
   intros.
-  induction k.
-  unfold insert.
-  
-Admitted.
+  assert (eqb b' b = false).
+  rewrite eqb_false_iff.
+  exact H0.
+  induction k'.
+  + simpl. rewrite H1.
+    destruct b'.
+    - destruct b. 
+      * tauto.
+      * crush.
+    - destruct b. 
+      * crush.
+      * tauto.
+  + simpl. rewrite H1.
+    destruct b'.
+    - destruct b.
+      * tauto.
+      * crush.
+    - destruct b.
+      * crush.
+      * tauto.
+Qed.
+
+Hint Rewrite correct_odd.
     
 
 Theorem insert_then_search:
   forall (k: bitstring) (v: A) (t: trie),
     search k (insert k v t) = Some v.
-  Proof.
-  intros.
+Proof.
   induction k.
-  + destruct t.
-    - unfold insert.
-      rewrite search_insert_top.
-      reflexivity.
-    - unfold insert.
-      induction b.
-      * rewrite search_insert_top.
-        reflexivity.
-      * destruct a.
-        Hint Rewrite search_insert_top.
-        auto.
-    auto.
-  + destruct t.
-    - unfold insert.
-      rewrite search_insert_top.
-      reflexivity.
+  + simpl.
+    destruct t.
+    - trivial.
     - destruct b.
-      
+      * trivial.
+      * destruct b; crush.
+  + destruct t.
+    - crush.
+    - destruct b.
+      * destruct a; crush.
+      * remember (eqb b a).
+        destruct b1.
+        {
+          assert (b = a). { rewrite <- eqb_true_iff. rewrite Heqb1. trivial. }
+          rewrite H.
+          rewrite correct_even.
+          trivial.
+          crush.
+        }
 
-
+        {
+          assert (b <> a). { rewrite <- eqb_false_iff. rewrite Heqb1. trivial. }
+          rewrite correct_odd.
+          trivial.
+          crush.
+          crush.
+        }
+Qed.
+   
 End Tries.
